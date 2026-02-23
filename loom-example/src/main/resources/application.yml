@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: loom-example
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: 8080
+
+loom:
+  enabled: true
+  config-file: loom.yml
+  upstreams:
+    product-service:
+      base-url: http://localhost:8081
+      connect-timeout-ms: 3000
+      read-timeout-ms: 5000
+      retry:
+        max-attempts: 3
+        initial-delay-ms: 100
+        multiplier: 2.0
+        max-delay-ms: 2000
+    pricing-service:
+      base-url: http://localhost:8082
+      connect-timeout-ms: 3000
+      read-timeout-ms: 5000
+    review-service:
+      base-url: http://localhost:8083
+      connect-timeout-ms: 2000
+      read-timeout-ms: 3000
+    user-service:
+      base-url: http://localhost:8084
+      connect-timeout-ms: 3000
+      read-timeout-ms: 5000
+    order-service:
+      base-url: http://localhost:8085
+      connect-timeout-ms: 3000
+      read-timeout-ms: 5000
+    notification-service:
+      base-url: http://localhost:8086
+      connect-timeout-ms: 2000
+      read-timeout-ms: 3000
+    health-service:
+      base-url: http://localhost:8087
+  ui:
+    enabled: true
+
+logging:
+  level:
+    io.loom: DEBUG

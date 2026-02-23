@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loom — DAG Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dagre-d3@0.6.4/dist/dagre-d3.min.js"></script>
+    <link rel="stylesheet" href="/loom/loom.css">
+</head>
+<body>
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <h2>Loom APIs</h2>
+            <div id="api-list"></div>
+        </aside>
+        <main class="content">
+            <div class="header">
+                <h1>Loom DAG Visualization</h1>
+                <span class="subtitle" id="current-api">Select an API to visualize</span>
+            </div>
+            <div class="graph-container">
+                <svg id="dag-svg"><g></g></svg>
+            </div>
+        </main>
+    </div>
+    <script src="/loom/loom.js"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+passthrough:
+  - path: /api/health
+    method: GET
+    upstream: health-service
+    upstream-path: /internal/health

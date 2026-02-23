@@ -1,0 +1,146 @@
+package io.loom.starter.web;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.loom.core.engine.DagExecutor;
+import io.loom.core.engine.DagNode;
+import io.loom.core.exception.GuardRejectedException;
+import io.loom.core.middleware.Guard;
+import io.loom.core.middleware.LoomHttpContext;
+import io.loom.core.middleware.Middleware;
+import io.loom.core.model.ApiDefinition;
+import io.loom.core.model.PassthroughDefinition;
+import io.loom.core.upstream.UpstreamClient;
+import io.loom.starter.context.SpringBuilderContext;
+import io.loom.starter.registry.DefaultMiddlewareChain;
+import io.loom.starter.registry.GuardRegistry;
+import io.loom.starter.registry.MiddlewareRegistry;
+import io.loom.starter.upstream.UpstreamClientRegistry;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.servlet.HandlerAdapter;
+import org.springframework.web.servlet.ModelAndView;
+
+import java.util.*;
+
+@Slf4j
+public class LoomHandlerAdapter implements HandlerAdapter {
+
+    private final DagExecutor dagExecutor;
+    private final MiddlewareRegistry middlewareRegistry;
+    private final GuardRegistry guardRegistry;
+    private final UpstreamClientRegistry upstreamClientRegistry;
+    private final ObjectMapper objectMapper;
+
+    public LoomHandlerAdapter(DagExecutor dagExecutor,
+                              MiddlewareRegistry middlewareRegistry,
+                              GuardRegistry guardRegistry,
+                              UpstreamClientRegistry upstreamClientRegistry,
+                              ObjectMapper objectMapper) {
+        this.dagExecutor = dagExecutor;
+        this.middlewareRegistry = middlewareRegistry;
+        this.guardRegistry = guardRegistry;
+        this.upstreamClientRegistry = upstreamClientRegistry;
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    public boolean supports(Object handler) {
+        return handler instanceof LoomRequestHandler;
+    }
+
+    @Override
+    public ModelAndView handle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        LoomRequestHandler loomHandler = (LoomRequestHandler) handler;
+        PathMatcher pathMatcher = loomHandler.getPathMatcher();
+        Map<String, String> pathVars = pathMatcher.extractVariables(request.getRequestURI());
+        String requestId = UUID.randomUUID().toString();
+
+        LoomHttpContextImpl httpContext = new LoomHttpContextImpl(
+                request, response, objectMapper, pathVars, requestId);
+
+        if (loomHandler.isPassthrough()) {
+            handlePassthrough(loomHandler.getPassthroughDefinition(), httpContext);
+        } else {
+            handleBuilder(loomHandler.getApiDefinition(), httpContext, pathVars, requestId);
+        }
+
+        response.setStatus(httpContext.getResponseStatus());
+        response.setContentType("application/json");
+
+        Object responseBody = httpContext.getResponseBody();
+        if (responseBody != null) {
+            objectMapper.writeValue(response.getOutputStream(), responseBody);
+        }
+
+        return null;
+    }
+
+    private void handleBuilder(ApiDefinition api, LoomHttpContextImpl httpContext,
+                               Map<String, String> pathVars, String requestId) {
+        // Execute guards
+        List<Guard> guards = guardRegistry.getGuards(api.guards());
+        for (Guard guard : guards) {
+            if (!guard.canActivate(httpContext)) {
+                throw new GuardRejectedException(guard.getClass().getSimpleName());
+            }
+        }
+
+        // Build middleware chain
+        List<Middleware> middlewares = middlewareRegistry.getMiddlewares(api.middlewares());
+
+        final Object[] result = new Object[1];
+
+        Runnable dagExecution = () -> {
+            SpringBuilderContext builderContext = new SpringBuilderContext(
+                    httpContext.getHttpMethod(),
+                    httpContext.getRequestPath(),
+                    pathVars,
+                    httpContext.getQueryParams(),
+                    httpContext.getHeaders(),
+                    httpContext.getRawRequestBody(),
+                    objectMapper,
+                    upstreamClientRegistry,
+                    requestId
+            );
+
+            // Copy attributes from middleware to builder context
+            httpContext.getAttributes().forEach(builderContext::setAttribute);
+
+            result[0] = dagExecutor.execute(api.dag(), builderContext);
+        };
+
+        DefaultMiddlewareChain chain = new DefaultMiddlewareChain(middlewares, dagExecution);
+        chain.next(httpContext);
+
+        httpContext.setResponseBody(result[0]);
+    }
+
+    private void handlePassthrough(PassthroughDefinition pt, LoomHttpContextImpl httpContext) {
+        UpstreamClient client = upstreamClientRegistry.getClient(pt.upstream());
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        httpContext.getHeaders().forEach((k, v) -> {
+            if (!k.equalsIgnoreCase("host") && !k.equalsIgnoreCase("content-length")) {
+                headers.put(k, v.get(0));
+            }
+        });
+
+        String method = httpContext.getHttpMethod().toUpperCase();
+        Object result = switch (method) {
+            case "GET" -> client.get(pt.upstreamPath(), Object.class, headers);
+            case "POST" -> client.post(pt.upstreamPath(), httpContext.getRawRequestBody(), Object.class, headers);
+            case "PUT" -> client.put(pt.upstreamPath(), httpContext.getRawRequestBody(), Object.class, headers);
+            case "DELETE" -> client.delete(pt.upstreamPath(), Object.class, headers);
+            case "PATCH" -> client.patch(pt.upstreamPath(), httpContext.getRawRequestBody(), Object.class, headers);
+            default -> throw new UnsupportedOperationException("Unsupported method: " + method);
+        };
+
+        httpContext.setResponseBody(result);
+    }
+
+    @Override
+    public long getLastModified(HttpServletRequest request, Object handler) {
+        return -1;
+    }
+}
