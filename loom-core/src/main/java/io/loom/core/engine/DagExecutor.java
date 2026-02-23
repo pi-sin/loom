@@ -14,7 +14,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.locks.ReentrantLock;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -22,81 +21,73 @@ import lombok.extern.slf4j.Slf4j;
 public class DagExecutor {
 
     private final BuilderFactory builderFactory;
+    private final ExecutorService virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     public DagExecutor(BuilderFactory builderFactory) {
         this.builderFactory = builderFactory;
     }
 
     public Object execute(Dag dag, BuilderContext context) {
-        ExecutorService vtExec = Executors.newVirtualThreadPerTaskExecutor();
         ConcurrentHashMap<Class<? extends LoomBuilder<?>>, CompletableFuture<BuilderResult<?>>> futures = new ConcurrentHashMap<>();
-        ConcurrentHashMap<Class<? extends LoomBuilder<?>>, Object> results = new ConcurrentHashMap<>();
-        ReentrantLock resultsLock = new ReentrantLock();
 
-        try {
-            for (DagNode node : dag.topologicalOrder()) {
-                CompletableFuture<BuilderResult<?>> future;
+        for (DagNode node : dag.topologicalOrder()) {
+            CompletableFuture<BuilderResult<?>> future;
 
-                if (node.dependsOn().isEmpty()) {
-                    future = CompletableFuture.supplyAsync(() -> executeNode(node, context, results, resultsLock),
-                                                           vtExec);
-                } else {
-                    CompletableFuture<?>[] deps = node.dependsOn().stream().map(dep -> futures.get(dep))
-                            .toArray(CompletableFuture[]::new);
+            if (node.dependsOn().isEmpty()) {
+                future = CompletableFuture.supplyAsync(() -> executeNode(node, context),
+                                                       virtualThreadExecutor);
+            } else {
+                CompletableFuture<?>[] deps = node.dependsOn().stream().map(dep -> futures.get(dep))
+                        .toArray(CompletableFuture[]::new);
 
-                    future = CompletableFuture.allOf(deps)
-                            .thenApplyAsync(v -> executeNode(node, context, results, resultsLock), vtExec);
-                }
+                future = CompletableFuture.allOf(deps)
+                        .thenApplyAsync(v -> executeNode(node, context), virtualThreadExecutor);
+            }
 
-                if (node.required()) {
-                    future = future.orTimeout(node.timeoutMs(), TimeUnit.MILLISECONDS).exceptionally(ex -> {
-                        if (ex instanceof TimeoutException || ex.getCause() instanceof TimeoutException) {
-                            throw new BuilderTimeoutException(node.name(), node.timeoutMs());
-                        }
-                        if (ex instanceof CompletionException ce) {
-                            if (ce.getCause() instanceof RuntimeException re) {
-                                throw re;
-                            }
-                            throw new LoomException("Builder '" + node.name() + "' failed", ce.getCause());
-                        }
-                        if (ex instanceof RuntimeException re) {
+            if (node.required()) {
+                future = future.orTimeout(node.timeoutMs(), TimeUnit.MILLISECONDS).exceptionally(ex -> {
+                    if (ex instanceof TimeoutException || ex.getCause() instanceof TimeoutException) {
+                        throw new BuilderTimeoutException(node.name(), node.timeoutMs());
+                    }
+                    if (ex instanceof CompletionException ce) {
+                        if (ce.getCause() instanceof RuntimeException re) {
                             throw re;
                         }
-                        throw new LoomException("Builder '" + node.name() + "' failed", ex);
-                    });
-                } else {
-                    future = future.completeOnTimeout(BuilderResult.timeout(), node.timeoutMs(), TimeUnit.MILLISECONDS)
-                            .exceptionally(ex -> {
-                                log.error("[Loom] Optional builder '{}' failed: {}", node.name(),
-                                          ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage(), ex);
-                                return BuilderResult.failure(ex);
-                            });
-                }
-
-                futures.put(node.builderClass(), future);
+                        throw new LoomException("Builder '" + node.name() + "' failed", ce.getCause());
+                    }
+                    if (ex instanceof RuntimeException re) {
+                        throw re;
+                    }
+                    throw new LoomException("Builder '" + node.name() + "' failed", ex);
+                });
+            } else {
+                future = future.completeOnTimeout(BuilderResult.timeout(), node.timeoutMs(), TimeUnit.MILLISECONDS)
+                        .exceptionally(ex -> {
+                            log.error("[Loom] Optional builder '{}' failed: {}", node.name(),
+                                      ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage(), ex);
+                            return BuilderResult.failure(ex);
+                        });
             }
 
-            // Wait for terminal node
-            BuilderResult<?> terminalResult = futures.get(dag.getTerminalNode().builderClass()).join();
-
-            if (terminalResult.isFailure()) {
-                throw new LoomException("Terminal builder '" + dag.getTerminalNode().name() + "' failed",
-                                        terminalResult.error());
-            }
-
-            if (terminalResult.timedOut()) {
-                throw new BuilderTimeoutException(dag.getTerminalNode().name(), dag.getTerminalNode().timeoutMs());
-            }
-
-            return terminalResult.value();
-        } finally {
-            vtExec.shutdown();
+            futures.put(node.builderClass(), future);
         }
+
+        // Wait for terminal node
+        BuilderResult<?> terminalResult = futures.get(dag.getTerminalNode().builderClass()).join();
+
+        if (terminalResult.isFailure()) {
+            throw new LoomException("Terminal builder '" + dag.getTerminalNode().name() + "' failed",
+                                    terminalResult.error());
+        }
+
+        if (terminalResult.timedOut()) {
+            throw new BuilderTimeoutException(dag.getTerminalNode().name(), dag.getTerminalNode().timeoutMs());
+        }
+
+        return terminalResult.value();
     }
 
-    private BuilderResult<?> executeNode(DagNode node, BuilderContext context,
-                                         ConcurrentHashMap<Class<? extends LoomBuilder<?>>, Object> results,
-                                         ReentrantLock resultsLock) {
+    private BuilderResult<?> executeNode(DagNode node, BuilderContext context) {
         String threadName = Thread.currentThread().toString();
         log.debug("[Loom] Executing node '{}' on virtual thread {}", node.name(), threadName);
 
@@ -104,13 +95,7 @@ public class DagExecutor {
             LoomBuilder<?> builder = builderFactory.createBuilderUntyped(node.builderClass());
             Object result = builder.build(context);
 
-            resultsLock.lock();
-            try {
-                results.put(node.builderClass(), result);
-                context.storeResult(node.builderClass(), node.outputType(), result);
-            } finally {
-                resultsLock.unlock();
-            }
+            context.storeResult(node.builderClass(), node.outputType(), result);
 
             log.debug("[Loom] Node '{}' completed successfully", node.name());
             return BuilderResult.success(result);
