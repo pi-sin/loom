@@ -36,7 +36,7 @@ import java.util.regex.Pattern;
 @Slf4j
 @AutoConfiguration
 @ConditionalOnClass(OpenApiCustomizer.class)
-@ConditionalOnProperty(prefix = "loom.swagger", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "loom.swagger", name = "enabled", havingValue = "true", matchIfMissing = false)
 public class LoomOpenApiConfiguration {
 
     private static final Pattern PATH_VARIABLE_PATTERN = Pattern.compile("\\{([^}]+)}");

@@ -8,13 +8,15 @@ import io.loom.core.registry.ApiRegistry;
 import io.loom.core.registry.BuilderFactory;
 import io.loom.starter.context.SpringBuilderFactory;
 import io.loom.starter.registry.InMemoryApiRegistry;
-import io.loom.starter.registry.GuardRegistry;
-import io.loom.starter.registry.MiddlewareRegistry;
+import io.loom.starter.registry.InterceptorRegistry;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfigurationPackages;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+
+import java.util.List;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -60,12 +62,19 @@ public class LoomAutoConfiguration {
     }
 
     @Bean
-    public MiddlewareRegistry middlewareRegistry(ApplicationContext applicationContext) {
-        return new MiddlewareRegistry(applicationContext);
+    public InterceptorRegistry interceptorRegistry(ApplicationContext applicationContext) {
+        return new InterceptorRegistry(applicationContext);
     }
 
     @Bean
-    public GuardRegistry guardRegistry(ApplicationContext applicationContext) {
-        return new GuardRegistry(applicationContext);
+    public static LoomBeanRegistry loomBeanRegistry(ApplicationContext applicationContext, LoomProperties properties) {
+        List<String> configured = properties.getBasePackages();
+        String[] packages;
+        if (configured != null && !configured.isEmpty()) {
+            packages = configured.toArray(String[]::new);
+        } else {
+            packages = AutoConfigurationPackages.get(applicationContext).toArray(String[]::new);
+        }
+        return new LoomBeanRegistry(packages);
     }
 }

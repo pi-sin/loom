@@ -1,6 +1,7 @@
 package io.loom.core.model;
 
 import io.loom.core.engine.Dag;
+import io.loom.core.interceptor.LoomInterceptor;
 import java.util.List;
 
 public record ApiDefinition(
@@ -8,8 +9,7 @@ public record ApiDefinition(
     String path,
     Class<?> requestType,
     Class<?> responseType,
-    String[] middlewares,
-    String[] guards,
+    Class<? extends LoomInterceptor>[] interceptors,
     Dag dag,
     String summary,
     String description,

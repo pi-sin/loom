@@ -2,7 +2,7 @@ package io.loom.starter.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.loom.core.exception.LoomException;
-import io.loom.core.middleware.LoomHttpContext;
+import io.loom.core.interceptor.LoomHttpContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 

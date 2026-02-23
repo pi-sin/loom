@@ -1,19 +1,20 @@
-package io.loom.example.middleware;
+package io.loom.example.interceptor;
 
-import io.loom.core.annotation.LoomMiddleware;
-import io.loom.core.middleware.LoomHttpContext;
-import io.loom.core.middleware.Middleware;
-import io.loom.core.middleware.MiddlewareChain;
+import io.loom.core.interceptor.InterceptorChain;
+import io.loom.core.interceptor.LoomHttpContext;
+import io.loom.core.interceptor.LoomInterceptor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-@LoomMiddleware(order = 1)
-public class RequestLoggingMiddleware implements Middleware {
+public class RequestLoggingInterceptor implements LoomInterceptor {
 
     @Override
-    public void handle(LoomHttpContext context, MiddlewareChain chain) {
+    public int order() { return 1; }
+
+    @Override
+    public void handle(LoomHttpContext context, InterceptorChain chain) {
         long start = System.currentTimeMillis();
         log.info("[Loom] >> {} {} (requestId={})",
                 context.getHttpMethod(), context.getRequestPath(), context.getRequestId());

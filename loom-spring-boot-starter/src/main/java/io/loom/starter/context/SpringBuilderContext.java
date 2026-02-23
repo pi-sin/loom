@@ -2,6 +2,7 @@ package io.loom.starter.context;
 
 import io.loom.core.builder.BuilderContext;
 import io.loom.core.builder.LoomBuilder;
+import io.loom.core.exception.DependencyResolutionException;
 import io.loom.core.exception.LoomException;
 import io.loom.core.upstream.UpstreamClient;
 import io.loom.starter.upstream.UpstreamClientRegistry;
@@ -108,24 +109,36 @@ public class SpringBuilderContext implements BuilderContext {
     public <T> T getDependency(Class<T> outputType) {
         Object result = resultsByType.get(outputType);
         if (result == null) {
-            throw new LoomException("No dependency found with output type: " + outputType.getSimpleName());
+            throw new DependencyResolutionException(
+                    outputType.getSimpleName(),
+                    resultsByType.keySet().stream().map(Class::getSimpleName).toList(),
+                    resultsByBuilder.keySet().stream().map(Class::getSimpleName).toList());
         }
         return (T) result;
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> T resultOf(Class<? extends LoomBuilder<T>> builderClass) {
+    public <T> T getResultOf(Class<? extends LoomBuilder<T>> builderClass) {
         Object result = resultsByBuilder.get(builderClass);
         if (result == null) {
-            throw new LoomException("No result found for builder: " + builderClass.getSimpleName());
+            throw new DependencyResolutionException(
+                    "builder:" + builderClass.getSimpleName(),
+                    resultsByType.keySet().stream().map(Class::getSimpleName).toList(),
+                    resultsByBuilder.keySet().stream().map(Class::getSimpleName).toList());
         }
         return (T) result;
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> Optional<T> optionalResultOf(Class<? extends LoomBuilder<T>> builderClass) {
+    public <T> Optional<T> getOptionalDependency(Class<T> outputType) {
+        return Optional.ofNullable((T) resultsByType.get(outputType));
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> Optional<T> getOptionalResultOf(Class<? extends LoomBuilder<T>> builderClass) {
         return Optional.ofNullable((T) resultsByBuilder.get(builderClass));
     }
 

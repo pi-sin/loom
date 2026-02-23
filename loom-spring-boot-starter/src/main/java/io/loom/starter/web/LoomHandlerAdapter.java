@@ -2,18 +2,15 @@ package io.loom.starter.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.loom.core.engine.DagExecutor;
-import io.loom.core.engine.DagNode;
-import io.loom.core.exception.GuardRejectedException;
-import io.loom.core.middleware.Guard;
-import io.loom.core.middleware.LoomHttpContext;
-import io.loom.core.middleware.Middleware;
+import io.loom.core.exception.LoomException;
+import io.loom.core.interceptor.LoomHttpContext;
+import io.loom.core.interceptor.LoomInterceptor;
 import io.loom.core.model.ApiDefinition;
 import io.loom.core.model.PassthroughDefinition;
 import io.loom.core.upstream.UpstreamClient;
 import io.loom.starter.context.SpringBuilderContext;
-import io.loom.starter.registry.DefaultMiddlewareChain;
-import io.loom.starter.registry.GuardRegistry;
-import io.loom.starter.registry.MiddlewareRegistry;
+import io.loom.starter.registry.DefaultInterceptorChain;
+import io.loom.starter.registry.InterceptorRegistry;
 import io.loom.starter.upstream.UpstreamClientRegistry;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -27,19 +24,16 @@ import java.util.*;
 public class LoomHandlerAdapter implements HandlerAdapter {
 
     private final DagExecutor dagExecutor;
-    private final MiddlewareRegistry middlewareRegistry;
-    private final GuardRegistry guardRegistry;
+    private final InterceptorRegistry interceptorRegistry;
     private final UpstreamClientRegistry upstreamClientRegistry;
     private final ObjectMapper objectMapper;
 
     public LoomHandlerAdapter(DagExecutor dagExecutor,
-                              MiddlewareRegistry middlewareRegistry,
-                              GuardRegistry guardRegistry,
+                              InterceptorRegistry interceptorRegistry,
                               UpstreamClientRegistry upstreamClientRegistry,
                               ObjectMapper objectMapper) {
         this.dagExecutor = dagExecutor;
-        this.middlewareRegistry = middlewareRegistry;
-        this.guardRegistry = guardRegistry;
+        this.interceptorRegistry = interceptorRegistry;
         this.upstreamClientRegistry = upstreamClientRegistry;
         this.objectMapper = objectMapper;
     }
@@ -78,16 +72,8 @@ public class LoomHandlerAdapter implements HandlerAdapter {
 
     private void handleBuilder(ApiDefinition api, LoomHttpContextImpl httpContext,
                                Map<String, String> pathVars, String requestId) {
-        // Execute guards
-        List<Guard> guards = guardRegistry.getGuards(api.guards());
-        for (Guard guard : guards) {
-            if (!guard.canActivate(httpContext)) {
-                throw new GuardRejectedException(guard.getClass().getSimpleName());
-            }
-        }
-
-        // Build middleware chain
-        List<Middleware> middlewares = middlewareRegistry.getMiddlewares(api.middlewares());
+        // Build interceptor chain
+        List<LoomInterceptor> interceptors = interceptorRegistry.getInterceptors(api.interceptors());
 
         final Object[] result = new Object[1];
 
@@ -104,13 +90,18 @@ public class LoomHandlerAdapter implements HandlerAdapter {
                     requestId
             );
 
-            // Copy attributes from middleware to builder context
+            // Copy attributes from interceptors to builder context
             httpContext.getAttributes().forEach(builderContext::setAttribute);
 
-            result[0] = dagExecutor.execute(api.dag(), builderContext);
+            try {
+                result[0] = dagExecutor.execute(api.dag(), builderContext);
+            } catch (LoomException ex) {
+                throw (LoomException) ex.withRequestId(requestId)
+                        .withApiRoute(api.method() + " " + api.path());
+            }
         };
 
-        DefaultMiddlewareChain chain = new DefaultMiddlewareChain(middlewares, dagExecution);
+        DefaultInterceptorChain chain = new DefaultInterceptorChain(interceptors, dagExecution);
         chain.next(httpContext);
 
         httpContext.setResponseBody(result[0]);

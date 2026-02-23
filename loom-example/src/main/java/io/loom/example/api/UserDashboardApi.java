@@ -6,9 +6,6 @@ import io.loom.core.annotation.LoomQueryParam;
 import io.loom.core.annotation.Node;
 import io.loom.example.builder.*;
 import io.loom.example.dto.UserDashboardResponse;
-import org.springframework.stereotype.Component;
-
-@Component
 @LoomApi(
     method = "GET",
     path = "/api/users/{userId}/dashboard",

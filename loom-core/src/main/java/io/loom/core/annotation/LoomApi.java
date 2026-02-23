@@ -1,5 +1,7 @@
 package io.loom.core.annotation;
 
+import io.loom.core.interceptor.LoomInterceptor;
+
 import java.lang.annotation.*;
 
 @Target(ElementType.TYPE)
@@ -10,8 +12,7 @@ public @interface LoomApi {
     String path();
     Class<?> request() default void.class;
     Class<?> response() default void.class;
-    String[] middlewares() default {};
-    String[] guards() default {};
+    Class<? extends LoomInterceptor>[] interceptors() default {};
     String summary() default "";
     String description() default "";
     String[] tags() default {};

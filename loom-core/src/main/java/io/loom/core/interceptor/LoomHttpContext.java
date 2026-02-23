@@ -1,4 +1,4 @@
-package io.loom.core.middleware;
+package io.loom.core.interceptor;
 
 import java.util.List;
 import java.util.Map;

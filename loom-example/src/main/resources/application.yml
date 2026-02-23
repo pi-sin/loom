@@ -1,15 +1,11 @@
 spring:
   application:
     name: loom-example
-  threads:
-    virtual:
-      enabled: true
 
 server:
   port: 8080
 
 loom:
-  enabled: true
   config-file: loom.yml
   upstreams:
     product-service:
@@ -43,6 +39,8 @@ loom:
       read-timeout-ms: 3000
     health-service:
       base-url: http://localhost:8087
+  swagger:
+    enabled: true
   ui:
     enabled: true
 

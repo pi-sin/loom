@@ -1,17 +1,15 @@
-package io.loom.example.middleware;
+package io.loom.example.interceptor;
 
-import io.loom.core.annotation.LoomMiddleware;
-import io.loom.core.middleware.LoomHttpContext;
-import io.loom.core.middleware.Middleware;
-import io.loom.core.middleware.MiddlewareChain;
+import io.loom.core.interceptor.InterceptorChain;
+import io.loom.core.interceptor.LoomHttpContext;
+import io.loom.core.interceptor.LoomInterceptor;
 import org.springframework.stereotype.Component;
 
 @Component
-@LoomMiddleware(order = 0)
-public class CorrelationIdMiddleware implements Middleware {
+public class CorrelationIdInterceptor implements LoomInterceptor {
 
     @Override
-    public void handle(LoomHttpContext context, MiddlewareChain chain) {
+    public void handle(LoomHttpContext context, InterceptorChain chain) {
         String correlationId = context.getHeader("X-Correlation-ID");
         if (correlationId == null || correlationId.isBlank()) {
             correlationId = context.getRequestId();

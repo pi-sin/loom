@@ -2,66 +2,99 @@
 
 **Java 21 API Gateway/BFF framework with DAG-based scatter-gather, powered by virtual threads.**
 
-Loom makes it trivial to build API gateways and Backend-for-Frontend (BFF) services that aggregate data from multiple upstream services. Define your data flow as a directed acyclic graph (DAG), and Loom executes it with maximum parallelism using virtual threads.
+Loom makes it trivial to build API gateways and Backend-for-Frontend (BFF) services that aggregate
+data from multiple upstream services. Define your data flow as a directed acyclic graph (DAG), and
+Loom executes it with maximum parallelism using virtual threads.
 
 ## Features
 
 - **Declarative DAG composition** — Define scatter-gather flows with annotations
 - **Zero-code passthrough** — Proxy upstream APIs with YAML config alone
-- **Virtual thread execution** — Every request, every DAG node, every upstream call runs on a virtual thread
+- **Virtual thread execution** — Every request, every DAG node, every upstream call runs on a
+  virtual thread
 - **Compile-time type safety** — Dependencies reference builder classes, not strings
-- **Auto terminal detection** — The builder whose output matches the response type is the terminal node
-- **Built-in retry with backoff** — Exponential backoff with jitter on virtual threads (sleep is free)
-- **Middleware & guard chains** — Request/response middleware with attribute passing to builders
+- **Auto terminal detection** — The builder whose output matches the response type is the terminal
+  node
+- **Built-in retry with backoff** — Exponential backoff with jitter on virtual threads (sleep is
+  free)
+- **Interceptor chains** — Request/response interceptors with attribute passing to builders
 - **Embedded DAG visualization** — Dark-themed UI at `/loom/ui` powered by D3.js + dagre-d3
-- **Built-in Swagger/OpenAPI** — Auto-generated API docs from `@LoomApi` annotations at `/swagger-ui.html`
+- **Built-in Swagger/OpenAPI** — Auto-generated API docs from `@LoomApi` annotations at
+  `/swagger-ui.html`
+
+**Use Loom if your use case looks like this:**
+
+```
+                              GET /api/products/{id}
+                                       |
+                                  Loom Gateway
+                              /        |        \
+                             /         |         \
+                  Product SVC    Pricing SVC    Review SVC        <-- Level 1 (parallel)
+                 (ProductInfo)  (PricingInfo)  (ReviewList)
+                      |  \         / |               |
+                      |   +---+---+  |               |
+                      |       |      +--------+      |
+                      |       v               |      |
+                      |  Recommendations SVC  |      |            <-- Level 2
+                      |  (RecommendationList) |      |
+                      |       |      |        |      |
+                      v       v      v        v      v
+                           AssembleProductBuilder                  <-- Level 3 (all 4)
+                           (ProductDetailResponse)
+```
+
+Three services fan out in parallel, a fourth waits for two of them, and a terminal node assembles
+everything.
 
 ## Quick Start
 
 ### 1. Add Dependencies
 
 ```xml
+
 <dependency>
-    <groupId>io.loom</groupId>
-    <artifactId>loom-spring-boot-starter</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+  <groupId>io.loom</groupId>
+  <artifactId>loom-spring-boot-starter</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
 </dependency>
 <dependency>
-    <groupId>io.loom</groupId>
-    <artifactId>loom-ui</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+<groupId>io.loom</groupId>
+<artifactId>loom-ui</artifactId>
+<version>0.1.0-SNAPSHOT</version>
 </dependency>
 ```
 
 ### 2. Define a DAG API
 
 ```java
-@Component
-@LoomApi(
-    method = "GET",
-    path = "/api/products/{id}",
-    response = ProductDetailResponse.class
-)
-@LoomGraph({
-    @Node(builder = FetchProductBuilder.class, timeoutMs = 3000),
-    @Node(builder = FetchPricingBuilder.class, dependsOn = FetchProductBuilder.class),
-    @Node(builder = FetchReviewsBuilder.class, required = false, timeoutMs = 2000),
-    @Node(builder = AssembleProductBuilder.class,
-          dependsOn = {FetchProductBuilder.class, FetchPricingBuilder.class,
-                       FetchReviewsBuilder.class})
-})
+
+@LoomApi(method = "GET", path = "/api/products/{id}", response = ProductDetailResponse.class)
+@LoomGraph({@Node(builder = FetchProductBuilder.class, timeoutMs = 3000),
+        @Node(builder = FetchPricingBuilder.class, dependsOn = FetchProductBuilder.class),
+        @Node(builder = FetchReviewsBuilder.class, required = false, timeoutMs = 2000), @Node(
+        builder = FetchRecommendationsBuilder.class,
+        required = false,
+        timeoutMs = 2000,
+        dependsOn = {FetchProductBuilder.class, FetchPricingBuilder.class}),
+        @Node(builder = AssembleProductBuilder.class,
+              dependsOn = {FetchProductBuilder.class, FetchPricingBuilder.class,
+                      FetchReviewsBuilder.class, FetchRecommendationsBuilder.class})})
 public class ProductDetailApi {}
 ```
+
+> **Note:** `@LoomApi` and `@LoomPassthrough` classes are auto-registered as Spring beans by the
+> starter — no `@Component` needed.
 
 ### 3. Implement Builders
 
 ```java
+
 @Component
 public class FetchProductBuilder implements LoomBuilder<ProductInfo> {
     public ProductInfo build(BuilderContext ctx) {
         String id = ctx.getPathVariable("id");
-        return ctx.upstream("product-service")
-                  .get("/products/" + id, ProductInfo.class);
+        return ctx.upstream("product-service").get("/products/" + id, ProductInfo.class);
     }
 }
 
@@ -70,7 +103,7 @@ public class AssembleProductBuilder implements LoomBuilder<ProductDetailResponse
     public ProductDetailResponse build(BuilderContext ctx) {
         ProductInfo info = ctx.getDependency(ProductInfo.class);
         PricingInfo pricing = ctx.getDependency(PricingInfo.class);
-        Optional<List<Review>> reviews = ctx.optionalResultOf(FetchReviewsBuilder.class);
+        Optional<List<Review>> reviews = ctx.getOptionalResultOf(FetchReviewsBuilder.class);
         return new ProductDetailResponse(info, pricing, reviews.orElse(List.of()));
     }
 }
@@ -113,10 +146,7 @@ HTTP Request (virtual thread via Jetty)
 LoomHandlerMapping (path template match)
   |
   v
-Guards (canActivate check -> 403 on reject)
-  |
-  v
-Middleware chain (global + per-route)
+Interceptor chain (global + per-route)
   |
   +--[Builder mode]----> DagExecutor
   |                        |
@@ -130,7 +160,7 @@ Middleware chain (global + per-route)
   +--[Passthrough]-----> RestClient -> Upstream -> Response
   |
   v
-Middleware chain (response phase)
+Interceptor chain (response phase)
   |
   v
 HTTP Response
@@ -142,58 +172,56 @@ HTTP Response
   FetchProduct ─────────────────────────────┐
   FetchPricing (depends: FetchProduct) ─────┤
   FetchReviews (optional, parallel) ────────┼──> AssembleProduct (terminal)
-  FetchRecommendations (optional) ──────────┘         |
-                                                      v
+  FetchRecommendations (depends: Product,   │         |
+                        Pricing; optional) ─┘         v
                                               ProductDetailResponse
 ```
 
-All independent nodes execute in parallel on virtual threads. Dependent nodes fire the instant their dependencies resolve.
+All independent nodes execute in parallel on virtual threads. Dependent nodes fire the instant their
+dependencies resolve.
 
 ## API Reference
 
 ### Annotations
 
-| Annotation | Target | Purpose |
-|-----------|--------|---------|
-| `@LoomApi` | Class | Route definition (method, path, request/response types, middlewares, guards, docs) |
-| `@LoomGraph` | Class | DAG definition, placed on same class as `@LoomApi` |
-| `@Node` | Nested | Individual DAG node (builder class, dependencies, required, timeout) |
-| `@LoomPassthrough` | Class | Annotation-based passthrough (alternative to YAML) |
-| `@LoomQueryParam` | Nested | Declares a query parameter (name, type, required, default, description) |
-| `@LoomHeaderParam` | Nested | Declares a required/documented header (name, required, description) |
-| `@LoomMiddleware` | Class | Marks a middleware with ordering |
-| `@LoomGuard` | Class | Marks a guard with ordering |
+| Annotation         | Target | Purpose                                                                     |
+|--------------------|--------|-----------------------------------------------------------------------------|
+| `@LoomApi`         | Class  | Route definition (method, path, request/response types, interceptors, docs) |
+| `@LoomGraph`       | Class  | DAG definition, placed on same class as `@LoomApi`                          |
+| `@Node`            | Nested | Individual DAG node (builder class, dependencies, required, timeout)        |
+| `@LoomPassthrough` | Class  | Annotation-based passthrough (alternative to YAML)                          |
+| `@LoomQueryParam`  | Nested | Declares a query parameter (name, type, required, default, description)     |
+| `@LoomHeaderParam` | Nested | Declares a required/documented header (name, required, description)         |
 
 ### Core Interfaces
 
-| Interface | Purpose |
-|-----------|---------|
-| `LoomBuilder<O>` | DAG node implementation. `O build(BuilderContext ctx)` |
-| `BuilderContext` | Shared context for all builders in a request |
-| `Middleware` | Request/response processing. `void handle(LoomHttpContext, MiddlewareChain)` |
-| `Guard` | Access control. `boolean canActivate(LoomHttpContext)` |
-| `UpstreamClient` | HTTP client for upstream calls (get/post/put/delete/patch) |
+| Interface         | Purpose                                                                                               |
+|-------------------|-------------------------------------------------------------------------------------------------------|
+| `LoomBuilder<O>`  | DAG node implementation. `O build(BuilderContext ctx)`                                                |
+| `BuilderContext`  | Shared context for all builders in a request                                                          |
+| `LoomInterceptor` | Request/response processing. `void handle(LoomHttpContext, InterceptorChain)` + `default int order()` |
+| `UpstreamClient`  | HTTP client for upstream calls (get/post/put/delete/patch)                                            |
 
 ### BuilderContext Methods
 
-| Method | Description |
-|--------|-------------|
-| `getPathVariable(name)` | Extract path variable |
-| `getQueryParam(name)` | Get query parameter |
-| `getHeader(name)` | Get request header |
-| `getRequestBody(type)` | Deserialize request body |
-| `getDependency(type)` | Get dependency by output type |
-| `resultOf(builderClass)` | Get dependency by builder class (generic-safe) |
-| `optionalResultOf(builderClass)` | Get optional dependency |
-| `upstream(name)` | Get upstream HTTP client |
-| `getAttribute(key, type)` | Get attribute set by middleware |
-| `getRequestId()` | Auto-generated correlation ID |
+| Method                              | Description                                         |
+|-------------------------------------|-----------------------------------------------------|
+| `getPathVariable(name)`             | Extract path variable                               |
+| `getQueryParam(name)`               | Get query parameter                                 |
+| `getHeader(name)`                   | Get request header                                  |
+| `getRequestBody(type)`              | Deserialize request body                            |
+| `getDependency(outputType)`         | Get dependency by output type (throws if missing)   |
+| `getResultOf(builderClass)`         | Get dependency by builder class (throws if missing) |
+| `getOptionalDependency(outputType)` | Get optional dependency by output type              |
+| `getOptionalResultOf(builderClass)` | Get optional dependency by builder class            |
+| `upstream(name)`                    | Get upstream HTTP client                            |
+| `getAttribute(key, type)`           | Get attribute set by interceptor                    |
+| `getRequestId()`                    | Auto-generated correlation ID                       |
 
 ### Configuration
 
 ```yaml
 loom:
-  enabled: true                    # Enable/disable framework
   config-file: loom.yml            # YAML config file path
   upstreams:
     service-name:
@@ -211,17 +239,20 @@ loom:
 
 ## Swagger / OpenAPI
 
-Loom auto-generates an OpenAPI spec from your `@LoomApi` and `@LoomPassthrough` annotations. Add the springdoc dependency to your app:
+Loom auto-generates an OpenAPI spec from your `@LoomApi` and `@LoomPassthrough` annotations. Add the
+springdoc dependency to your app:
 
 ```xml
+
 <dependency>
-    <groupId>org.springdoc</groupId>
-    <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-    <version>2.8.6</version>
+  <groupId>org.springdoc</groupId>
+  <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+  <version>2.8.6</version>
 </dependency>
 ```
 
 Then visit:
+
 - **Swagger UI:** `http://localhost:8080/swagger-ui.html`
 - **OpenAPI JSON:** `http://localhost:8080/v3/api-docs`
 
@@ -230,32 +261,30 @@ Then visit:
 Declare query parameters, headers, and documentation metadata directly on your API class:
 
 ```java
-@LoomApi(
-    method = "GET",
-    path = "/api/products/{id}",
-    response = ProductDetailResponse.class,
-    summary = "Get product details",
-    description = "Fetches product info, pricing, reviews and recommendations in parallel",
-    tags = {"Products"},
-    queryParams = {
-        @LoomQueryParam(name = "currency", description = "Price currency"),
-        @LoomQueryParam(name = "fields", description = "Comma-separated fields to include")
-    },
-    headers = {
-        @LoomHeaderParam(name = "X-API-Key", required = true, description = "API authentication key")
-    },
-    guards = {"apiKeyGuard"}
-)
+@LoomApi(method = "GET",
+         path = "/api/products/{id}",
+         response = ProductDetailResponse.class,
+         summary = "Get product details",
+         description = "Fetches product info, pricing, reviews and recommendations in parallel",
+         tags = {"Products"},
+         queryParams = {@LoomQueryParam(name = "currency", description = "Price currency"),
+                 @LoomQueryParam(name = "fields",
+                                 description = "Comma-separated fields to include")},
+         headers = {@LoomHeaderParam(name = "X-API-Key",
+                                     required = true,
+                                     description = "API authentication key")},
+         interceptors = {ApiKeyInterceptor.class})
 ```
 
 Passthrough routes also support documentation:
 
 ```java
-@LoomPassthrough(
-    method = "GET", path = "/api/health",
-    upstream = "health-service", upstreamPath = "/internal/health",
-    summary = "Health check", tags = {"Infrastructure"}
-)
+@LoomPassthrough(method = "GET",
+                 path = "/api/health",
+                 upstream = "health-service",
+                 upstreamPath = "/internal/health",
+                 summary = "Health check",
+                 tags = {"Infrastructure"})
 ```
 
 ### Configuration
@@ -263,7 +292,7 @@ Passthrough routes also support documentation:
 ```yaml
 loom:
   swagger:
-    enabled: true   # default: true, set to false to disable
+    enabled: true   # default: false, must opt in to enable
 ```
 
 ## Upstream API Cookbook
@@ -271,12 +300,12 @@ loom:
 ### GET with Path Params
 
 ```java
+
 @Component
 public class FetchProductBuilder implements LoomBuilder<ProductInfo> {
     public ProductInfo build(BuilderContext ctx) {
         String id = ctx.getPathVariable("id");
-        return ctx.upstream("product-service")
-                  .get("/products/" + id, ProductInfo.class);
+        return ctx.upstream("product-service").get("/products/" + id, ProductInfo.class);
     }
 }
 ```
@@ -284,6 +313,7 @@ public class FetchProductBuilder implements LoomBuilder<ProductInfo> {
 ### GET with Query Params
 
 ```java
+
 @Component
 public class SearchProductsBuilder implements LoomBuilder<ProductList> {
     public ProductList build(BuilderContext ctx) {
@@ -291,37 +321,35 @@ public class SearchProductsBuilder implements LoomBuilder<ProductList> {
         String page = ctx.getQueryParam("page");
         String sort = ctx.getQueryParam("sort");
 
-        String path = "/products?category=" + category
-                    + "&page=" + (page != null ? page : "1")
-                    + "&sort=" + (sort != null ? sort : "relevance");
+        String path =
+                "/products?category=" + category + "&page=" + (page != null ? page : "1") + "&sort="
+                        + (sort != null ? sort : "relevance");
 
         return ctx.upstream("product-service").get(path, ProductList.class);
     }
 }
 ```
 
-For `GET /api/products?category=electronics&page=2&sort=price`, the builder receives all query params via `ctx.getQueryParam(name)`. For multi-valued params, use `ctx.getQueryParams()` which returns `Map<String, List<String>>`.
+For `GET /api/products?category=electronics&page=2&sort=price`, the builder receives all query
+params via `ctx.getQueryParam(name)`. For multi-valued params, use `ctx.getQueryParams()` which
+returns `Map<String, List<String>>`.
 
 ### POST with Request Body
 
 ```java
 // API definition — note the `request` type for incoming body
-@Component
-@LoomApi(
-    method = "POST",
-    path = "/api/orders",
-    request = CreateOrderRequest.class,
-    response = OrderResponse.class
-)
-@LoomGraph({
-    @Node(builder = ValidateOrderBuilder.class),
-    @Node(builder = CreateOrderBuilder.class, dependsOn = ValidateOrderBuilder.class),
-    @Node(builder = SendConfirmationBuilder.class, dependsOn = CreateOrderBuilder.class)
-})
+@LoomApi(method = "POST",
+         path = "/api/orders",
+         request = CreateOrderRequest.class,
+         response = OrderResponse.class)
+@LoomGraph({@Node(builder = ValidateOrderBuilder.class),
+        @Node(builder = CreateOrderBuilder.class, dependsOn = ValidateOrderBuilder.class),
+        @Node(builder = SendConfirmationBuilder.class, dependsOn = CreateOrderBuilder.class)})
 public class CreateOrderApi {}
 
 // DTOs
 public record CreateOrderRequest(String productId, int quantity, String shippingAddress) {}
+
 public record OrderResponse(String orderId, String status, String estimatedDelivery) {}
 
 // Builder — reads the incoming request body, POSTs to upstream
@@ -330,8 +358,7 @@ public class CreateOrderBuilder implements LoomBuilder<OrderResponse> {
     public OrderResponse build(BuilderContext ctx) {
         CreateOrderRequest request = ctx.getRequestBody(CreateOrderRequest.class);
 
-        return ctx.upstream("order-service")
-                  .post("/internal/orders", request, OrderResponse.class);
+        return ctx.upstream("order-service").post("/internal/orders", request, OrderResponse.class);
     }
 }
 ```
@@ -339,6 +366,7 @@ public class CreateOrderBuilder implements LoomBuilder<OrderResponse> {
 ### PUT with Custom Headers
 
 ```java
+
 @Component
 public class UpdateProfileBuilder implements LoomBuilder<UserProfile> {
     public UserProfile build(BuilderContext ctx) {
@@ -346,14 +374,12 @@ public class UpdateProfileBuilder implements LoomBuilder<UserProfile> {
         UpdateProfileRequest body = ctx.getRequestBody(UpdateProfileRequest.class);
 
         // Forward auth header from original request + add custom headers
-        Map<String, String> headers = Map.of(
-            "Authorization", ctx.getHeader("Authorization"),
-            "X-Request-ID", ctx.getRequestId(),
-            "Content-Type", "application/json"
-        );
+        Map<String, String> headers = Map.of("Authorization", ctx.getHeader("Authorization"),
+                                             "X-Request-ID", ctx.getRequestId(), "Content-Type",
+                                             "application/json");
 
         return ctx.upstream("user-service")
-                  .put("/users/" + userId, body, UserProfile.class, headers);
+                .put("/users/" + userId, body, UserProfile.class, headers);
     }
 }
 ```
@@ -361,6 +387,7 @@ public class UpdateProfileBuilder implements LoomBuilder<UserProfile> {
 ### DELETE
 
 ```java
+
 @Component
 public class DeleteCartItemBuilder implements LoomBuilder<Void> {
     public Void build(BuilderContext ctx) {
@@ -368,7 +395,7 @@ public class DeleteCartItemBuilder implements LoomBuilder<Void> {
         String itemId = ctx.getPathVariable("itemId");
 
         return ctx.upstream("cart-service")
-                  .delete("/carts/" + cartId + "/items/" + itemId, Void.class);
+                .delete("/carts/" + cartId + "/items/" + itemId, Void.class);
     }
 }
 ```
@@ -376,6 +403,7 @@ public class DeleteCartItemBuilder implements LoomBuilder<Void> {
 ### PATCH with Partial Update
 
 ```java
+
 @Component
 public class PatchOrderBuilder implements LoomBuilder<OrderResponse> {
     public OrderResponse build(BuilderContext ctx) {
@@ -383,21 +411,20 @@ public class PatchOrderBuilder implements LoomBuilder<OrderResponse> {
         Map<String, Object> patch = ctx.getRequestBody(Map.class);
 
         return ctx.upstream("order-service")
-                  .patch("/orders/" + orderId, patch, OrderResponse.class);
+                .patch("/orders/" + orderId, patch, OrderResponse.class);
     }
 }
 ```
 
-### Reading Headers Set by Middleware
+### Reading Headers Set by Interceptor
 
-Middlewares can authenticate and set attributes that builders read:
+Interceptors can authenticate and set attributes that builders read:
 
 ```java
-// Middleware sets authenticated user
+// Interceptor sets authenticated user
 @Component
-@LoomMiddleware(order = 0)
-public class AuthMiddleware implements Middleware {
-    public void handle(LoomHttpContext ctx, MiddlewareChain chain) {
+public class AuthInterceptor implements LoomInterceptor {
+    public void handle(LoomHttpContext ctx, InterceptorChain chain) {
         String token = ctx.getHeader("Authorization");
         User user = authService.validate(token);
         ctx.setAttribute("authenticatedUser", user);
@@ -405,19 +432,47 @@ public class AuthMiddleware implements Middleware {
     }
 }
 
-// Builder reads middleware attribute + forwards auth downstream
+// Builder reads interceptor attribute + forwards auth downstream
 @Component
 public class FetchUserDataBuilder implements LoomBuilder<UserData> {
     public UserData build(BuilderContext ctx) {
         User user = ctx.getAttribute("authenticatedUser", User.class);
 
-        Map<String, String> headers = Map.of(
-            "X-User-ID", user.id(),
-            "X-Correlation-ID", ctx.getRequestId()
-        );
+        Map<String, String> headers = Map.of("X-User-ID", user.id(), "X-Correlation-ID",
+                                             ctx.getRequestId());
 
         return ctx.upstream("user-service")
-                  .get("/users/" + user.id() + "/data", UserData.class, headers);
+                .get("/users/" + user.id() + "/data", UserData.class, headers);
+    }
+}
+```
+
+### Resolving Dependencies
+
+Use `getDependency` / `getOptionalDependency` to look up a builder result by its **output type**.
+Use the `*From` variants to look up by **builder class** — needed when multiple builders produce the
+same type.
+
+```java
+
+@Component
+public class AssembleOrderBuilder implements LoomBuilder<OrderSummary> {
+    public OrderSummary build(BuilderContext ctx) {
+        // By output type — works when only one builder produces this type
+        OrderInfo order = ctx.getDependency(OrderInfo.class);
+
+        // By builder class — needed when two builders produce the same type (e.g. ShippingEstimate)
+        ShippingEstimate domestic = ctx.getResultOf(DomesticShippingBuilder.class);
+        ShippingEstimate international = ctx.getResultOf(InternationalShippingBuilder.class);
+
+        // Optional by output type — returns Optional.empty() if the builder was non-required and failed
+        Optional<LoyaltyPoints> loyalty = ctx.getOptionalDependency(LoyaltyPoints.class);
+
+        // Optional by builder class — same, but disambiguates by builder
+        Optional<ShippingEstimate> express = ctx.getOptionalResultOf(ExpressShippingBuilder.class);
+
+        return new OrderSummary(order, domestic, international, loyalty.orElse(null),
+                                express.orElse(null));
     }
 }
 ```
@@ -425,6 +480,7 @@ public class FetchUserDataBuilder implements LoomBuilder<UserData> {
 ### Accessing All Request Data
 
 ```java
+
 @Component
 public class DebugBuilder implements LoomBuilder<Map<String, Object>> {
     public Map<String, Object> build(BuilderContext ctx) {
@@ -454,32 +510,37 @@ public class DebugBuilder implements LoomBuilder<Map<String, Object>> {
 
 ### UpstreamClient Method Reference
 
-| Method | Signature | Use Case |
-|--------|-----------|----------|
-| `get` | `get(path, responseType)` | Simple GET |
-| `get` | `get(path, responseType, headers)` | GET with custom headers |
-| `post` | `post(path, body, responseType)` | POST with JSON body |
-| `post` | `post(path, body, responseType, headers)` | POST with body + headers |
-| `put` | `put(path, body, responseType)` | Full resource update |
-| `put` | `put(path, body, responseType, headers)` | PUT with headers |
-| `delete` | `delete(path, responseType)` | Delete resource |
-| `delete` | `delete(path, responseType, headers)` | Delete with auth headers |
-| `patch` | `patch(path, body, responseType)` | Partial update |
-| `patch` | `patch(path, body, responseType, headers)` | Partial update + headers |
+| Method   | Signature                                  | Use Case                 |
+|----------|--------------------------------------------|--------------------------|
+| `get`    | `get(path, responseType)`                  | Simple GET               |
+| `get`    | `get(path, responseType, headers)`         | GET with custom headers  |
+| `post`   | `post(path, body, responseType)`           | POST with JSON body      |
+| `post`   | `post(path, body, responseType, headers)`  | POST with body + headers |
+| `put`    | `put(path, body, responseType)`            | Full resource update     |
+| `put`    | `put(path, body, responseType, headers)`   | PUT with headers         |
+| `delete` | `delete(path, responseType)`               | Delete resource          |
+| `delete` | `delete(path, responseType, headers)`      | Delete with auth headers |
+| `patch`  | `patch(path, body, responseType)`          | Partial update           |
+| `patch`  | `patch(path, body, responseType, headers)` | Partial update + headers |
 
-All upstream calls are **blocking on virtual threads** — the virtual thread unmounts from the carrier thread during I/O wait, so blocking is as efficient as async with much simpler code. Retry with exponential backoff is automatic based on upstream configuration.
+All upstream calls are **blocking on virtual threads** — the virtual thread unmounts from the
+carrier thread during I/O wait, so blocking is as efficient as async with much simpler code. Retry
+with exponential backoff is automatic based on upstream configuration.
 
 ## Virtual Threads
 
 Loom uses virtual threads at every layer:
 
-1. **HTTP handling** — Jetty spawns virtual threads for each request (`spring.threads.virtual.enabled: true`)
-2. **DAG execution** — Each builder node runs on its own virtual thread via `Executors.newVirtualThreadPerTaskExecutor()`
+1. **HTTP handling** — Jetty spawns virtual threads for each request (
+   `spring.threads.virtual.enabled: true`)
+2. **DAG execution** — Each builder node runs on its own virtual thread via
+   `Executors.newVirtualThreadPerTaskExecutor()`
 3. **Upstream calls** — Blocking `RestClient` calls unmount from carrier threads during I/O
 4. **Retry backoff** — `Thread.sleep()` on virtual threads has zero platform thread cost
-5. **Middleware** — Entire chain runs on the request's virtual thread; blocking calls are safe
+5. **Interceptors** — Entire chain runs on the request's virtual thread; blocking calls are safe
 
-**Anti-pinning rules:** The framework uses `ReentrantLock` instead of `synchronized` everywhere. If you need locking in your builders, use `ReentrantLock`.
+**Anti-pinning rules:** The framework uses `ReentrantLock` instead of `synchronized` everywhere. If
+you need locking in your builders, use `ReentrantLock`.
 
 ## Module Structure
 
@@ -505,6 +566,7 @@ mvn spring-boot:run
 ```
 
 Then visit:
+
 - `GET http://localhost:8080/api/products/42` (with header `X-API-Key: demo-api-key-12345`)
 - `GET http://localhost:8080/api/users/123/dashboard`
 - `GET http://localhost:8080/loom/ui` — DAG visualization

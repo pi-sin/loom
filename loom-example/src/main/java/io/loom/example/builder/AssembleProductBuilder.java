@@ -14,8 +14,8 @@ public class AssembleProductBuilder implements LoomBuilder<ProductDetailResponse
     public ProductDetailResponse build(BuilderContext context) {
         ProductInfo product = context.getDependency(ProductInfo.class);
         PricingInfo pricing = context.getDependency(PricingInfo.class);
-        List<Review> reviews = context.optionalResultOf(FetchReviewsBuilder.class).orElse(List.of());
-        List<Recommendation> recommendations = context.optionalResultOf(FetchRecommendationsBuilder.class).orElse(List.of());
+        List<Review> reviews = context.getOptionalResultOf(FetchReviewsBuilder.class).orElse(List.of());
+        List<Recommendation> recommendations = context.getOptionalResultOf(FetchRecommendationsBuilder.class).orElse(List.of());
 
         return new ProductDetailResponse(product, pricing, reviews, recommendations);
     }

@@ -6,11 +6,17 @@ import io.loom.core.builder.LoomBuilder;
 import io.loom.core.exception.BuilderTimeoutException;
 import io.loom.core.exception.LoomException;
 import io.loom.core.registry.BuilderFactory;
-import lombok.extern.slf4j.Slf4j;
 
-import java.util.Map;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class DagExecutor {
@@ -23,8 +29,7 @@ public class DagExecutor {
 
     public Object execute(Dag dag, BuilderContext context) {
         ExecutorService vtExec = Executors.newVirtualThreadPerTaskExecutor();
-        ConcurrentHashMap<Class<? extends LoomBuilder<?>>, CompletableFuture<BuilderResult<?>>> futures =
-                new ConcurrentHashMap<>();
+        ConcurrentHashMap<Class<? extends LoomBuilder<?>>, CompletableFuture<BuilderResult<?>>> futures = new ConcurrentHashMap<>();
         ConcurrentHashMap<Class<? extends LoomBuilder<?>>, Object> results = new ConcurrentHashMap<>();
         ReentrantLock resultsLock = new ReentrantLock();
 
@@ -33,11 +38,10 @@ public class DagExecutor {
                 CompletableFuture<BuilderResult<?>> future;
 
                 if (node.dependsOn().isEmpty()) {
-                    future = CompletableFuture.supplyAsync(
-                            () -> executeNode(node, context, results, resultsLock), vtExec);
+                    future = CompletableFuture.supplyAsync(() -> executeNode(node, context, results, resultsLock),
+                                                           vtExec);
                 } else {
-                    CompletableFuture<?>[] deps = node.dependsOn().stream()
-                            .map(dep -> futures.get(dep))
+                    CompletableFuture<?>[] deps = node.dependsOn().stream().map(dep -> futures.get(dep))
                             .toArray(CompletableFuture[]::new);
 
                     future = CompletableFuture.allOf(deps)
@@ -45,27 +49,26 @@ public class DagExecutor {
                 }
 
                 if (node.required()) {
-                    future = future.orTimeout(node.timeoutMs(), TimeUnit.MILLISECONDS)
-                            .exceptionally(ex -> {
-                                if (ex instanceof TimeoutException || ex.getCause() instanceof TimeoutException) {
-                                    throw new BuilderTimeoutException(node.name(), node.timeoutMs());
-                                }
-                                if (ex instanceof CompletionException ce) {
-                                    if (ce.getCause() instanceof RuntimeException re) {
-                                        throw re;
-                                    }
-                                    throw new LoomException("Builder '" + node.name() + "' failed", ce.getCause());
-                                }
-                                if (ex instanceof RuntimeException re) {
-                                    throw re;
-                                }
-                                throw new LoomException("Builder '" + node.name() + "' failed", ex);
-                            });
+                    future = future.orTimeout(node.timeoutMs(), TimeUnit.MILLISECONDS).exceptionally(ex -> {
+                        if (ex instanceof TimeoutException || ex.getCause() instanceof TimeoutException) {
+                            throw new BuilderTimeoutException(node.name(), node.timeoutMs());
+                        }
+                        if (ex instanceof CompletionException ce) {
+                            if (ce.getCause() instanceof RuntimeException re) {
+                                throw re;
+                            }
+                            throw new LoomException("Builder '" + node.name() + "' failed", ce.getCause());
+                        }
+                        if (ex instanceof RuntimeException re) {
+                            throw re;
+                        }
+                        throw new LoomException("Builder '" + node.name() + "' failed", ex);
+                    });
                 } else {
                     future = future.completeOnTimeout(BuilderResult.timeout(), node.timeoutMs(), TimeUnit.MILLISECONDS)
                             .exceptionally(ex -> {
-                                log.warn("[Loom] Optional builder '{}' failed: {}", node.name(),
-                                        ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage());
+                                log.error("[Loom] Optional builder '{}' failed: {}", node.name(),
+                                          ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage(), ex);
                                 return BuilderResult.failure(ex);
                             });
                 }
@@ -78,12 +81,11 @@ public class DagExecutor {
 
             if (terminalResult.isFailure()) {
                 throw new LoomException("Terminal builder '" + dag.getTerminalNode().name() + "' failed",
-                        terminalResult.error());
+                                        terminalResult.error());
             }
 
             if (terminalResult.timedOut()) {
-                throw new BuilderTimeoutException(dag.getTerminalNode().name(),
-                        dag.getTerminalNode().timeoutMs());
+                throw new BuilderTimeoutException(dag.getTerminalNode().name(), dag.getTerminalNode().timeoutMs());
             }
 
             return terminalResult.value();
@@ -105,6 +107,7 @@ public class DagExecutor {
             resultsLock.lock();
             try {
                 results.put(node.builderClass(), result);
+                context.storeResult(node.builderClass(), node.outputType(), result);
             } finally {
                 resultsLock.unlock();
             }
@@ -112,7 +115,7 @@ public class DagExecutor {
             log.debug("[Loom] Node '{}' completed successfully", node.name());
             return BuilderResult.success(result);
         } catch (Exception e) {
-            log.error("[Loom] Required builder '{}' failed: {}", node.name(), e.getMessage());
+            log.error("[Loom] Required builder '{}' failed: {}", node.name(), e.getMessage(), e);
             if (node.required()) {
                 throw e;
             }

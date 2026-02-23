@@ -20,8 +20,9 @@ public interface BuilderContext {
 
     // Dependency outputs
     <T> T getDependency(Class<T> outputType);
-    <T> T resultOf(Class<? extends LoomBuilder<T>> builderClass);
-    <T> Optional<T> optionalResultOf(Class<? extends LoomBuilder<T>> builderClass);
+    <T> T getResultOf(Class<? extends LoomBuilder<T>> builderClass);
+    <T> Optional<T> getOptionalDependency(Class<T> outputType);
+    <T> Optional<T> getOptionalResultOf(Class<? extends LoomBuilder<T>> builderClass);
 
     // Upstream HTTP client
     UpstreamClient upstream(String name);
@@ -30,6 +31,9 @@ public interface BuilderContext {
     void setAttribute(String key, Object value);
     <T> T getAttribute(String key, Class<T> type);
     Map<String, Object> getAttributes();
+
+    // Result storage (used by DagExecutor)
+    void storeResult(Class<? extends LoomBuilder<?>> builderClass, Class<?> outputType, Object result);
 
     // Correlation ID
     String getRequestId();

@@ -15,15 +15,9 @@ import java.util.Map;
 @ControllerAdvice
 public class LoomExceptionHandler {
 
-    @ExceptionHandler(GuardRejectedException.class)
-    public ResponseEntity<Map<String, Object>> handleGuardRejected(GuardRejectedException ex) {
-        log.warn("[Loom] Guard rejected: {}", ex.getMessage());
-        return buildResponse(HttpStatus.FORBIDDEN, ex.getMessage());
-    }
-
     @ExceptionHandler(LoomValidationException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(LoomValidationException ex) {
-        log.warn("[Loom] Validation failed: {}", ex.getMessage());
+        log.warn("[Loom] Validation failed: {}", ex.getMessage(), ex);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", Instant.now().toString());
         body.put("status", HttpStatus.BAD_REQUEST.value());
@@ -35,31 +29,37 @@ public class LoomExceptionHandler {
 
     @ExceptionHandler(BuilderTimeoutException.class)
     public ResponseEntity<Map<String, Object>> handleTimeout(BuilderTimeoutException ex) {
-        log.error("[Loom] Builder timeout: {}", ex.getMessage());
-        return buildResponse(HttpStatus.GATEWAY_TIMEOUT, ex.getMessage());
+        log.error("[Loom] Builder timeout: {}", ex.getMessage(), ex);
+        return buildResponse(HttpStatus.GATEWAY_TIMEOUT, ex);
     }
 
     @ExceptionHandler(UpstreamException.class)
     public ResponseEntity<Map<String, Object>> handleUpstream(UpstreamException ex) {
-        log.error("[Loom] Upstream error: {}", ex.getMessage());
+        log.error("[Loom] Upstream error: {}", ex.getMessage(), ex);
         HttpStatus status = ex.getStatusCode() > 0
                 ? HttpStatus.valueOf(ex.getStatusCode())
                 : HttpStatus.BAD_GATEWAY;
-        return buildResponse(status, ex.getMessage());
+        return buildResponse(status, ex);
     }
 
     @ExceptionHandler(LoomException.class)
     public ResponseEntity<Map<String, Object>> handleLoomException(LoomException ex) {
-        log.error("[Loom] Error: {}", ex.getMessage());
-        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());
+        log.error("[Loom] Error: {}", ex.getMessage(), ex);
+        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, ex);
     }
 
-    private ResponseEntity<Map<String, Object>> buildResponse(HttpStatus status, String message) {
+    private ResponseEntity<Map<String, Object>> buildResponse(HttpStatus status, LoomException ex) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", Instant.now().toString());
         body.put("status", status.value());
         body.put("error", status.getReasonPhrase());
-        body.put("message", message);
+        body.put("message", ex.getMessage());
+        if (ex.getRequestId() != null) {
+            body.put("requestId", ex.getRequestId());
+        }
+        if (ex.getApiRoute() != null) {
+            body.put("route", ex.getApiRoute());
+        }
         return ResponseEntity.status(status).body(body);
     }
 }
