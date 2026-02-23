@@ -15,8 +15,6 @@ public class LoomProperties {
 
     private boolean enabled = true;
 
-    private String configFile = "loom.yml";
-
     private Map<String, UpstreamProperties> upstreams = new HashMap<>();
 
     private UiProperties ui = new UiProperties();

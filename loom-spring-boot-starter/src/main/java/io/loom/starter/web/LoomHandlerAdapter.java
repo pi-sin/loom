@@ -3,10 +3,8 @@ package io.loom.starter.web;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.loom.core.engine.DagExecutor;
 import io.loom.core.exception.LoomException;
-import io.loom.core.interceptor.LoomHttpContext;
 import io.loom.core.interceptor.LoomInterceptor;
 import io.loom.core.model.ApiDefinition;
-import io.loom.core.model.PassthroughDefinition;
 import io.loom.core.upstream.UpstreamClient;
 import io.loom.starter.context.SpringBuilderContext;
 import io.loom.starter.registry.DefaultInterceptorChain;
@@ -53,10 +51,12 @@ public class LoomHandlerAdapter implements HandlerAdapter {
         LoomHttpContextImpl httpContext = new LoomHttpContextImpl(
                 request, response, objectMapper, pathVars, requestId);
 
-        if (loomHandler.isPassthrough()) {
-            handlePassthrough(loomHandler.getPassthroughDefinition(), httpContext);
+        ApiDefinition api = loomHandler.getApiDefinition();
+
+        if (api.isPassthrough()) {
+            handlePassthrough(api, httpContext);
         } else {
-            handleBuilder(loomHandler.getApiDefinition(), httpContext, pathVars, requestId);
+            handleBuilder(api, httpContext, pathVars, requestId);
         }
 
         response.setStatus(httpContext.getResponseStatus());
@@ -107,27 +107,34 @@ public class LoomHandlerAdapter implements HandlerAdapter {
         httpContext.setResponseBody(result[0]);
     }
 
-    private void handlePassthrough(PassthroughDefinition pt, LoomHttpContextImpl httpContext) {
-        UpstreamClient client = upstreamClientRegistry.getClient(pt.upstream());
+    private void handlePassthrough(ApiDefinition api, LoomHttpContextImpl httpContext) {
+        List<LoomInterceptor> interceptors = interceptorRegistry.getInterceptors(api.interceptors());
 
-        Map<String, String> headers = new LinkedHashMap<>();
-        httpContext.getHeaders().forEach((k, v) -> {
-            if (!k.equalsIgnoreCase("host") && !k.equalsIgnoreCase("content-length")) {
-                headers.put(k, v.get(0));
-            }
-        });
+        Runnable upstreamCall = () -> {
+            UpstreamClient client = upstreamClientRegistry.getClient(api.upstreamName());
 
-        String method = httpContext.getHttpMethod().toUpperCase();
-        Object result = switch (method) {
-            case "GET" -> client.get(pt.upstreamPath(), Object.class, headers);
-            case "POST" -> client.post(pt.upstreamPath(), httpContext.getRawRequestBody(), Object.class, headers);
-            case "PUT" -> client.put(pt.upstreamPath(), httpContext.getRawRequestBody(), Object.class, headers);
-            case "DELETE" -> client.delete(pt.upstreamPath(), Object.class, headers);
-            case "PATCH" -> client.patch(pt.upstreamPath(), httpContext.getRawRequestBody(), Object.class, headers);
-            default -> throw new UnsupportedOperationException("Unsupported method: " + method);
+            Map<String, String> headers = new LinkedHashMap<>();
+            httpContext.getHeaders().forEach((k, v) -> {
+                if (!k.equalsIgnoreCase("host") && !k.equalsIgnoreCase("content-length")) {
+                    headers.put(k, v.get(0));
+                }
+            });
+
+            String method = httpContext.getHttpMethod().toUpperCase();
+            Object result = switch (method) {
+                case "GET" -> client.get(api.upstreamPath(), Object.class, headers);
+                case "POST" -> client.post(api.upstreamPath(), httpContext.getRawRequestBody(), Object.class, headers);
+                case "PUT" -> client.put(api.upstreamPath(), httpContext.getRawRequestBody(), Object.class, headers);
+                case "DELETE" -> client.delete(api.upstreamPath(), Object.class, headers);
+                case "PATCH" -> client.patch(api.upstreamPath(), httpContext.getRawRequestBody(), Object.class, headers);
+                default -> throw new UnsupportedOperationException("Unsupported method: " + method);
+            };
+
+            httpContext.setResponseBody(result);
         };
 
-        httpContext.setResponseBody(result);
+        DefaultInterceptorChain chain = new DefaultInterceptorChain(interceptors, upstreamCall);
+        chain.next(httpContext);
     }
 
     @Override

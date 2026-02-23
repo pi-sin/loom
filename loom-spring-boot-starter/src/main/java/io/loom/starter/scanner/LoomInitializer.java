@@ -3,7 +3,6 @@ package io.loom.starter.scanner;
 import io.loom.core.engine.DagCompiler;
 import io.loom.core.engine.DagExecutor;
 import io.loom.core.registry.ApiRegistry;
-import io.loom.starter.config.LoomProperties;
 import io.loom.starter.upstream.UpstreamClientRegistry;
 import io.loom.starter.web.LoomHandlerAdapter;
 import io.loom.starter.web.LoomHandlerMapping;
@@ -24,35 +23,26 @@ public class LoomInitializer implements SmartInitializingSingleton {
     private final ApplicationContext applicationContext;
     private final DagCompiler dagCompiler;
     private final ApiRegistry apiRegistry;
-    private final LoomProperties properties;
 
     public LoomInitializer(ApplicationContext applicationContext,
                            DagCompiler dagCompiler,
-                           ApiRegistry apiRegistry,
-                           LoomProperties properties) {
+                           ApiRegistry apiRegistry) {
         this.applicationContext = applicationContext;
         this.dagCompiler = dagCompiler;
         this.apiRegistry = apiRegistry;
-        this.properties = properties;
     }
 
     @Override
     public void afterSingletonsInstantiated() {
         log.info("[Loom] Initializing Loom framework...");
 
-        // 1. Scan annotations
+        // Scan annotations
         LoomAnnotationScanner scanner = new LoomAnnotationScanner(
                 applicationContext, dagCompiler, apiRegistry);
         scanner.scan();
 
-        // 2. Parse YAML config
-        LoomYamlParser yamlParser = new LoomYamlParser(apiRegistry);
-        yamlParser.parse(properties.getConfigFile());
-
         int apiCount = apiRegistry.getAllApis().size();
-        int ptCount = apiRegistry.getAllPassthroughs().size();
-        log.info("[Loom] Registered {} builder APIs, {} passthrough routes",
-                apiCount, ptCount);
+        log.info("[Loom] Registered {} APIs", apiCount);
 
         log.info("[Loom] Framework initialized successfully");
     }

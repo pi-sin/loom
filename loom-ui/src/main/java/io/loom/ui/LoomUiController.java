@@ -3,7 +3,6 @@ package io.loom.ui;
 import io.loom.core.engine.Dag;
 import io.loom.core.engine.DagNode;
 import io.loom.core.model.ApiDefinition;
-import io.loom.core.model.PassthroughDefinition;
 import io.loom.core.registry.ApiRegistry;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,51 +30,55 @@ public class LoomUiController {
         List<ApiGraphDto> graphs = new ArrayList<>();
 
         for (ApiDefinition api : apiRegistry.getAllApis()) {
-            Dag dag = api.dag();
-            List<NodeDto> nodes = new ArrayList<>();
-            List<EdgeDto> edges = new ArrayList<>();
-
-            for (var entry : dag.getNodes().entrySet()) {
-                DagNode node = entry.getValue();
-                boolean isTerminal = node.builderClass().equals(dag.getTerminalNode().builderClass());
-
-                nodes.add(new NodeDto(
-                        node.name(),
-                        node.outputType().getSimpleName(),
-                        node.required(),
-                        node.timeoutMs(),
-                        isTerminal
+            if (api.isPassthrough()) {
+                graphs.add(new ApiGraphDto(
+                        api.method(),
+                        api.path(),
+                        api.requestType() != null && api.requestType() != void.class
+                                ? api.requestType().getSimpleName() : null,
+                        api.responseType() != null && api.responseType() != void.class
+                                ? api.responseType().getSimpleName() : null,
+                        List.of(new NodeDto("passthrough",
+                                api.upstreamName() + api.upstreamPath(),
+                                true, 0, true)),
+                        List.of(),
+                        "passthrough"
                 ));
+            } else {
+                Dag dag = api.dag();
+                List<NodeDto> nodes = new ArrayList<>();
+                List<EdgeDto> edges = new ArrayList<>();
 
-                for (var dep : node.dependsOn()) {
-                    DagNode depNode = dag.getNode(dep);
-                    if (depNode != null) {
-                        edges.add(new EdgeDto(depNode.name(), node.name()));
+                for (var entry : dag.getNodes().entrySet()) {
+                    DagNode node = entry.getValue();
+                    boolean isTerminal = node.builderClass().equals(dag.getTerminalNode().builderClass());
+
+                    nodes.add(new NodeDto(
+                            node.name(),
+                            node.outputType().getSimpleName(),
+                            node.required(),
+                            node.timeoutMs(),
+                            isTerminal
+                    ));
+
+                    for (var dep : node.dependsOn()) {
+                        DagNode depNode = dag.getNode(dep);
+                        if (depNode != null) {
+                            edges.add(new EdgeDto(depNode.name(), node.name()));
+                        }
                     }
                 }
+
+                graphs.add(new ApiGraphDto(
+                        api.method(),
+                        api.path(),
+                        api.requestType() != void.class ? api.requestType().getSimpleName() : null,
+                        api.responseType().getSimpleName(),
+                        nodes,
+                        edges,
+                        "builder"
+                ));
             }
-
-            graphs.add(new ApiGraphDto(
-                    api.method(),
-                    api.path(),
-                    api.requestType() != void.class ? api.requestType().getSimpleName() : null,
-                    api.responseType().getSimpleName(),
-                    nodes,
-                    edges,
-                    "builder"
-            ));
-        }
-
-        for (PassthroughDefinition pt : apiRegistry.getAllPassthroughs()) {
-            graphs.add(new ApiGraphDto(
-                    pt.method(),
-                    pt.path(),
-                    null,
-                    null,
-                    List.of(new NodeDto("passthrough", pt.upstream(), true, 0, true)),
-                    List.of(),
-                    "passthrough"
-            ));
         }
 
         return graphs;

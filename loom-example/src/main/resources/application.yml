@@ -6,7 +6,6 @@ server:
   port: 8080
 
 loom:
-  config-file: loom.yml
   upstreams:
     product-service:
       base-url: http://localhost:8081

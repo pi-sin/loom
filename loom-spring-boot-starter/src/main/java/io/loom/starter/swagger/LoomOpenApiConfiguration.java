@@ -2,7 +2,6 @@ package io.loom.starter.swagger;
 
 import io.loom.core.model.ApiDefinition;
 import io.loom.core.model.HeaderParamDefinition;
-import io.loom.core.model.PassthroughDefinition;
 import io.loom.core.model.QueryParamDefinition;
 import io.loom.core.registry.ApiRegistry;
 import io.swagger.v3.core.converter.AnnotatedType;
@@ -61,9 +60,6 @@ public class LoomOpenApiConfiguration {
             for (ApiDefinition api : apiRegistry.getAllApis()) {
                 addApiPath(openApi, api);
             }
-            for (PassthroughDefinition pt : apiRegistry.getAllPassthroughs()) {
-                addPassthroughPath(openApi, pt);
-            }
 
             // Resolve domain type schemas for request/response types
             for (ApiDefinition api : apiRegistry.getAllApis()) {
@@ -81,8 +77,8 @@ public class LoomOpenApiConfiguration {
             // Sort schemas alphabetically
             sortSchemas(openApi);
 
-            log.info("[Loom] Registered {} API routes and {} passthrough routes in OpenAPI spec",
-                    apiRegistry.getAllApis().size(), apiRegistry.getAllPassthroughs().size());
+            log.info("[Loom] Registered {} API routes in OpenAPI spec",
+                    apiRegistry.getAllApis().size());
         };
     }
 
@@ -169,45 +165,6 @@ public class LoomOpenApiConfiguration {
             pathItem = new PathItem();
         }
         setOperationOnPathItem(pathItem, api.method(), operation);
-
-        if (openApi.getPaths() == null) {
-            openApi.setPaths(new io.swagger.v3.oas.models.Paths());
-        }
-        openApi.getPaths().addPathItem(path, pathItem);
-    }
-
-    private void addPassthroughPath(OpenAPI openApi, PassthroughDefinition pt) {
-        Operation operation = new Operation();
-
-        if (!pt.summary().isEmpty()) {
-            operation.setSummary(pt.summary());
-        } else {
-            operation.setSummary("Passthrough to " + pt.upstream() + pt.upstreamPath());
-        }
-        if (!pt.description().isEmpty()) {
-            operation.setDescription(pt.description());
-        }
-        if (pt.tags() != null && pt.tags().length > 0) {
-            operation.setTags(Arrays.asList(pt.tags()));
-        } else {
-            operation.addTagsItem("Passthrough");
-        }
-
-        // Path parameters
-        extractPathParams(pt.path()).forEach(operation::addParametersItem);
-
-        ApiResponses responses = new ApiResponses();
-        ApiResponse okResponse = new ApiResponse();
-        okResponse.setDescription("Proxied response from " + pt.upstream());
-        responses.addApiResponse("200", okResponse);
-        operation.setResponses(responses);
-
-        String path = springToOpenApiPath(pt.path());
-        PathItem pathItem = openApi.getPaths() != null ? openApi.getPaths().get(path) : null;
-        if (pathItem == null) {
-            pathItem = new PathItem();
-        }
-        setOperationOnPathItem(pathItem, pt.method(), operation);
 
         if (openApi.getPaths() == null) {
             openApi.setPaths(new io.swagger.v3.oas.models.Paths());

@@ -15,9 +15,16 @@ public record ApiDefinition(
     String description,
     String[] tags,
     List<QueryParamDefinition> queryParams,
-    List<HeaderParamDefinition> headerParams
+    List<HeaderParamDefinition> headerParams,
+    String upstreamName,
+    String upstreamPath
 ) {
+    public boolean isPassthrough() {
+        return upstreamName != null && upstreamPath != null;
+    }
+
     public RouteDefinition toRoute() {
-        return new RouteDefinition(method, path, RouteDefinition.RouteType.BUILDER);
+        return new RouteDefinition(method, path,
+                isPassthrough() ? RouteDefinition.RouteType.PASSTHROUGH : RouteDefinition.RouteType.BUILDER);
     }
 }
