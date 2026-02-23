@@ -21,6 +21,7 @@ public class SpringBuilderContext implements BuilderContext {
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final UpstreamClientRegistry upstreamRegistry;
     private final String requestId;
+    private final Object cachedRequestBody;
 
     private final ConcurrentHashMap<String, Object> attributes = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Class<?>, Object> resultsByType = new ConcurrentHashMap<>();
@@ -33,7 +34,8 @@ public class SpringBuilderContext implements BuilderContext {
                                 byte[] rawRequestBody,
                                 com.fasterxml.jackson.databind.ObjectMapper objectMapper,
                                 UpstreamClientRegistry upstreamRegistry,
-                                String requestId) {
+                                String requestId,
+                                Object cachedRequestBody) {
         this.httpMethod = httpMethod;
         this.requestPath = requestPath;
         this.pathVariables = pathVariables != null ? pathVariables : Map.of();
@@ -43,10 +45,15 @@ public class SpringBuilderContext implements BuilderContext {
         this.objectMapper = objectMapper;
         this.upstreamRegistry = upstreamRegistry;
         this.requestId = requestId;
+        this.cachedRequestBody = cachedRequestBody;
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> T getRequestBody(Class<T> type) {
+        if (cachedRequestBody != null && type.isInstance(cachedRequestBody)) {
+            return (T) cachedRequestBody;
+        }
         if (rawRequestBody == null || rawRequestBody.length == 0) {
             return null;
         }

@@ -22,6 +22,8 @@ public class LoomHttpContextImpl implements LoomHttpContext {
     private final ConcurrentHashMap<String, Object> attributes = new ConcurrentHashMap<>();
     private Object responseBody;
     private int responseStatus = 200;
+    private Map<String, String> queryParamDefaults;
+    private Object cachedParsedBody;
 
     public LoomHttpContextImpl(HttpServletRequest request, HttpServletResponse response,
                                ObjectMapper objectMapper, Map<String, String> pathVariables,
@@ -70,13 +72,20 @@ public class LoomHttpContextImpl implements LoomHttpContext {
 
     @Override
     public String getQueryParam(String name) {
-        return request.getParameter(name);
+        String val = request.getParameter(name);
+        if (val == null && queryParamDefaults != null) {
+            val = queryParamDefaults.get(name);
+        }
+        return val;
     }
 
     @Override
     public Map<String, List<String>> getQueryParams() {
         Map<String, List<String>> params = new LinkedHashMap<>();
         request.getParameterMap().forEach((k, v) -> params.put(k, Arrays.asList(v)));
+        if (queryParamDefaults != null) {
+            queryParamDefaults.forEach((k, v) -> params.putIfAbsent(k, List.of(v)));
+        }
         return params;
     }
 
@@ -96,7 +105,11 @@ public class LoomHttpContextImpl implements LoomHttpContext {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> T getRequestBody(Class<T> type) {
+        if (cachedParsedBody != null && type.isInstance(cachedParsedBody)) {
+            return (T) cachedParsedBody;
+        }
         if (rawBody == null || rawBody.length == 0) {
             return null;
         }
@@ -105,6 +118,14 @@ public class LoomHttpContextImpl implements LoomHttpContext {
         } catch (Exception e) {
             throw new LoomException("Failed to deserialize request body", e);
         }
+    }
+
+    void applyQueryParamDefaults(Map<String, String> defaults) {
+        this.queryParamDefaults = defaults;
+    }
+
+    void cacheParsedBody(Object body) {
+        this.cachedParsedBody = body;
     }
 
     @Override

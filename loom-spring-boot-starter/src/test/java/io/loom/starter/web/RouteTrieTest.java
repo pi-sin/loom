@@ -20,7 +20,7 @@ class RouteTrieTest {
 
     private ApiDefinition api(String method, String path) {
         return new ApiDefinition(method, path, null, null, null, null,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
     }
 
     @Test

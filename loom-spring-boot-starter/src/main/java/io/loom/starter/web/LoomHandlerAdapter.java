@@ -6,6 +6,7 @@ import io.loom.core.exception.LoomException;
 import io.loom.core.interceptor.LoomInterceptor;
 import io.loom.core.model.ApiDefinition;
 import io.loom.core.upstream.UpstreamClient;
+import io.loom.core.validation.RequestValidator;
 import io.loom.starter.context.SpringBuilderContext;
 import io.loom.starter.registry.DefaultInterceptorChain;
 import io.loom.starter.registry.InterceptorRegistry;
@@ -52,10 +53,24 @@ public class LoomHandlerAdapter implements HandlerAdapter {
 
         ApiDefinition api = loomHandler.getApiDefinition();
 
+        // Validate request before interceptor chain
+        Object cachedBody = null;
+        if (api.validationPlan() != null) {
+            RequestValidator.ValidationResult vr = RequestValidator.validate(
+                    api.validationPlan(), httpContext, objectMapper);
+            if (vr != null) {
+                if (vr.queryParamDefaults() != null) httpContext.applyQueryParamDefaults(vr.queryParamDefaults());
+                if (vr.parsedBody() != null) {
+                    httpContext.cacheParsedBody(vr.parsedBody());
+                    cachedBody = vr.parsedBody();
+                }
+            }
+        }
+
         if (api.isPassthrough()) {
             handlePassthrough(api, httpContext);
         } else {
-            handleBuilder(api, httpContext, pathVars, requestId);
+            handleBuilder(api, httpContext, pathVars, requestId, cachedBody);
         }
 
         response.setStatus(httpContext.getResponseStatus());
@@ -70,7 +85,8 @@ public class LoomHandlerAdapter implements HandlerAdapter {
     }
 
     private void handleBuilder(ApiDefinition api, LoomHttpContextImpl httpContext,
-                               Map<String, String> pathVars, String requestId) {
+                               Map<String, String> pathVars, String requestId,
+                               Object cachedBody) {
         // Build interceptor chain
         List<LoomInterceptor> interceptors = interceptorRegistry.getInterceptors(api.interceptors());
 
@@ -86,7 +102,8 @@ public class LoomHandlerAdapter implements HandlerAdapter {
                     httpContext.getRawRequestBody(),
                     objectMapper,
                     upstreamClientRegistry,
-                    requestId
+                    requestId,
+                    cachedBody
             );
 
             // Copy attributes from interceptors to builder context

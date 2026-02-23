@@ -2,6 +2,7 @@ package io.loom.core.model;
 
 import io.loom.core.engine.Dag;
 import io.loom.core.interceptor.LoomInterceptor;
+import io.loom.core.validation.ValidationPlan;
 import java.util.List;
 
 public record ApiDefinition(
@@ -17,7 +18,8 @@ public record ApiDefinition(
     List<QueryParamDefinition> queryParams,
     List<HeaderParamDefinition> headerParams,
     String upstreamName,
-    String upstreamPath
+    String upstreamPath,
+    ValidationPlan validationPlan
 ) {
     public boolean isPassthrough() {
         return upstreamName != null && upstreamPath != null;

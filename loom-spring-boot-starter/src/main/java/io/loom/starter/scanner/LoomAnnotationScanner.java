@@ -9,6 +9,8 @@ import io.loom.core.model.ApiDefinition;
 import io.loom.core.model.HeaderParamDefinition;
 import io.loom.core.model.QueryParamDefinition;
 import io.loom.core.registry.ApiRegistry;
+import io.loom.core.validation.RequestValidator;
+import io.loom.core.validation.ValidationPlan;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 
@@ -59,6 +61,8 @@ public class LoomAnnotationScanner {
 
             if (graph != null) {
                 Dag dag = dagCompiler.compile(apiClass);
+                ValidationPlan validationPlan = RequestValidator.compile(
+                        queryParams, headerParams, api.request(), api.method());
 
                 ApiDefinition definition = new ApiDefinition(
                         api.method(),
@@ -73,12 +77,16 @@ public class LoomAnnotationScanner {
                         queryParams,
                         headerParams,
                         null,
-                        null
+                        null,
+                        validationPlan
                 );
                 apiRegistry.registerApi(definition);
                 log.info("[Loom] Scanned builder API: {} {} from {}",
                         api.method(), api.path(), apiClass.getSimpleName());
             } else if (upstream != null) {
+                ValidationPlan validationPlan = RequestValidator.compile(
+                        queryParams, headerParams, api.request(), api.method());
+
                 ApiDefinition definition = new ApiDefinition(
                         api.method(),
                         api.path(),
@@ -92,7 +100,8 @@ public class LoomAnnotationScanner {
                         queryParams,
                         headerParams,
                         upstream.name(),
-                        upstream.path()
+                        upstream.path(),
+                        validationPlan
                 );
                 apiRegistry.registerApi(definition);
                 log.info("[Loom] Scanned passthrough API: {} {} -> {}{} from {}",
