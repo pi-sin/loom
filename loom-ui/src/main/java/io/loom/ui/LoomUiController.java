@@ -2,8 +2,10 @@ package io.loom.ui;
 
 import io.loom.core.engine.Dag;
 import io.loom.core.engine.DagNode;
+import io.loom.core.interceptor.LoomInterceptor;
 import io.loom.core.model.ApiDefinition;
 import io.loom.core.registry.ApiRegistry;
+import io.loom.starter.registry.InterceptorRegistry;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.view.RedirectView;
@@ -15,9 +17,11 @@ import java.util.List;
 public class LoomUiController {
 
     private final ApiRegistry apiRegistry;
+    private final InterceptorRegistry interceptorRegistry;
 
-    public LoomUiController(ApiRegistry apiRegistry) {
+    public LoomUiController(ApiRegistry apiRegistry, InterceptorRegistry interceptorRegistry) {
         this.apiRegistry = apiRegistry;
+        this.interceptorRegistry = interceptorRegistry;
     }
 
     @GetMapping("/loom/ui")
@@ -30,6 +34,8 @@ public class LoomUiController {
         List<ApiGraphDto> graphs = new ArrayList<>();
 
         for (ApiDefinition api : apiRegistry.getAllApis()) {
+            List<InterceptorDto> interceptors = resolveInterceptors(api);
+
             if (api.isPassthrough()) {
                 graphs.add(new ApiGraphDto(
                         api.method(),
@@ -42,7 +48,8 @@ public class LoomUiController {
                                 api.upstreamName() + api.upstreamPath(),
                                 true, 0, true)),
                         List.of(),
-                        "passthrough"
+                        "passthrough",
+                        interceptors
                 ));
             } else {
                 Dag dag = api.dag();
@@ -76,12 +83,20 @@ public class LoomUiController {
                         api.responseType().getSimpleName(),
                         nodes,
                         edges,
-                        "builder"
+                        "builder",
+                        interceptors
                 ));
             }
         }
 
         return graphs;
+    }
+
+    private List<InterceptorDto> resolveInterceptors(ApiDefinition api) {
+        List<LoomInterceptor> interceptors = interceptorRegistry.getInterceptors(api.interceptors());
+        return interceptors.stream()
+                .map(i -> new InterceptorDto(i.getClass().getSimpleName(), i.order()))
+                .toList();
     }
 
     public record ApiGraphDto(
@@ -91,7 +106,8 @@ public class LoomUiController {
             String responseType,
             List<NodeDto> nodes,
             List<EdgeDto> edges,
-            String type
+            String type,
+            List<InterceptorDto> interceptors
     ) {}
 
     public record NodeDto(
@@ -105,5 +121,10 @@ public class LoomUiController {
     public record EdgeDto(
             String from,
             String to
+    ) {}
+
+    public record InterceptorDto(
+            String name,
+            int order
     ) {}
 }

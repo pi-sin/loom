@@ -175,6 +175,40 @@ For simple passthrough routes without typed schemas:
 public class HealthCheckApi {}
 ```
 
+## DAG Visualization UI
+
+Loom ships with an embedded visualization dashboard at `/loom/ui`. It renders every registered API's
+execution graph as an interactive DAG, with zoom/pan support powered by D3.js and dagre-d3.
+
+![Loom UI](docs/loom-ui.png)
+
+**What you get out of the box:**
+
+- **API sidebar** — Browse all registered `@LoomApi` endpoints with method badges and type labels
+- **Top-to-bottom DAG** — Node dependencies rendered vertically; required nodes in blue, optional in
+  purple (dashed), terminal/builder nodes in indigo with a glow
+- **Interceptor pipeline** — For APIs with interceptors, a horizontal chain shows the full request
+  flow: `Request → Interceptor1 → Interceptor2 → DAG Execution`
+- **Zoom & pan** — Scroll to zoom, drag to pan; auto-fits on API selection
+
+Enable it by adding the `loom-ui` dependency:
+
+```xml
+<dependency>
+  <groupId>io.loom</groupId>
+  <artifactId>loom-ui</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+</dependency>
+```
+
+```yaml
+loom:
+  ui:
+    enabled: true   # default
+```
+
+Then visit `http://localhost:8080/loom/ui`.
+
 ## Architecture
 
 ```

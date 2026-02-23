@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Loom — DAG Visualization</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dagre-d3@0.6.4/dist/dagre-d3.min.js"></script>
     <link rel="stylesheet" href="/loom/loom.css">
@@ -11,7 +14,20 @@
 <body>
     <div class="layout">
         <aside class="sidebar" id="sidebar">
-            <h2>Loom APIs</h2>
+            <div class="sidebar-brand">
+                <svg class="sidebar-logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="32" height="32" rx="8" fill="url(#logo-grad)"/>
+                    <path d="M8 12h4v8H8zM14 10h4v12h-4zM20 14h4v6h-4z" fill="#fff" opacity="0.9"/>
+                    <defs>
+                        <linearGradient id="logo-grad" x1="0" y1="0" x2="32" y2="32">
+                            <stop stop-color="#6366f1"/>
+                            <stop offset="1" stop-color="#a78bfa"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <span class="sidebar-title">Loom</span>
+            </div>
+            <div class="sidebar-section-label">API Endpoints</div>
             <div id="api-list"></div>
         </aside>
         <main class="content">
@@ -19,6 +35,11 @@
                 <h1>Loom DAG Visualization</h1>
                 <span class="subtitle" id="current-api">Select an API to visualize</span>
             </div>
+            <div class="interceptor-section" id="interceptor-section" style="display:none;">
+                <div class="interceptor-label">Interceptor Pipeline</div>
+                <div class="interceptor-pipeline" id="interceptor-pipeline"></div>
+            </div>
+            <div class="dag-section-label" id="dag-section-label" style="display:none;">DAG Execution Graph</div>
             <div class="graph-container">
                 <svg id="dag-svg"><g></g></svg>
             </div>

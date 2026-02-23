@@ -22,14 +22,78 @@
             const card = document.createElement('div');
             card.className = 'api-card';
             card.dataset.index = index;
+            card.style.animationDelay = `${index * 0.05}s`;
+
             card.innerHTML = `
-                <span class="method method-${api.method}">${api.method}</span>
-                <span class="path">${api.path}</span>
-                <div><span class="type-badge">${api.type}</span></div>
+                <div class="card-row">
+                    <span class="method method-${api.method}">${api.method}</span>
+                    <span class="path">${api.path}</span>
+                </div>
+                <div class="card-meta">
+                    <span class="type-badge">${api.type}</span>
+                </div>
             `;
             card.addEventListener('click', () => selectApi(index));
             list.appendChild(card);
         });
+    }
+
+    function formatInterceptorName(name) {
+        return name.replace(/Interceptor$/i, '');
+    }
+
+    function renderInterceptorPipeline(api) {
+        const section = document.getElementById('interceptor-section');
+        const pipeline = document.getElementById('interceptor-pipeline');
+        const dagLabel = document.getElementById('dag-section-label');
+
+        const interceptors = api.interceptors || [];
+
+        if (interceptors.length === 0) {
+            section.style.display = 'none';
+            dagLabel.style.display = 'none';
+            return;
+        }
+
+        section.style.display = 'block';
+        dagLabel.style.display = 'block';
+        pipeline.innerHTML = '';
+
+        const sorted = [...interceptors].sort((a, b) => a.order - b.order);
+
+        // Request node
+        const reqNode = document.createElement('span');
+        reqNode.className = 'interceptor-node node-request';
+        reqNode.textContent = 'Request';
+        reqNode.style.animationDelay = '0s';
+        pipeline.appendChild(reqNode);
+
+        sorted.forEach((interceptor, i) => {
+            // Arrow
+            const arrow = document.createElement('span');
+            arrow.className = 'interceptor-arrow';
+            arrow.textContent = '\u2192';
+            pipeline.appendChild(arrow);
+
+            // Interceptor node
+            const node = document.createElement('span');
+            node.className = 'interceptor-node node-interceptor';
+            node.style.animationDelay = `${(i + 1) * 0.08}s`;
+            node.innerHTML = `${formatInterceptorName(interceptor.name)} <span class="interceptor-order">#${interceptor.order}</span>`;
+            pipeline.appendChild(node);
+        });
+
+        // Final arrow + DAG Execution node
+        const finalArrow = document.createElement('span');
+        finalArrow.className = 'interceptor-arrow';
+        finalArrow.textContent = '\u2192';
+        pipeline.appendChild(finalArrow);
+
+        const dagNode = document.createElement('span');
+        dagNode.className = 'interceptor-node node-dag';
+        dagNode.style.animationDelay = `${(sorted.length + 1) * 0.08}s`;
+        dagNode.textContent = 'DAG Execution';
+        pipeline.appendChild(dagNode);
     }
 
     function selectApi(index) {
@@ -39,8 +103,9 @@
 
         const api = graphs[index];
         document.getElementById('current-api').textContent =
-            `${api.method} ${api.path}` + (api.responseType ? ` → ${api.responseType}` : '');
+            `${api.method} ${api.path}` + (api.responseType ? ` \u2192 ${api.responseType}` : '');
 
+        renderInterceptorPipeline(api);
         renderDag(api);
     }
 
@@ -50,11 +115,11 @@
         const inner = svg.append('g');
 
         const g = new dagreD3.graphlib.Graph().setGraph({
-            rankdir: 'LR',
+            rankdir: 'TB',
             marginx: 40,
             marginy: 40,
-            ranksep: 80,
-            nodesep: 40
+            ranksep: 60,
+            nodesep: 50
         });
 
         api.nodes.forEach(node => {
@@ -63,16 +128,15 @@
             else if (!node.required) cssClass = 'node-optional';
 
             let label = node.name;
-            if (node.outputType) label += `\n→ ${node.outputType}`;
+            if (node.outputType) label += `\n\u2192 ${node.outputType}`;
             if (!node.required) label += '\n(optional)';
-            if (node.terminal) label += '\n★ terminal';
 
             g.setNode(node.name, {
                 label: label,
                 class: cssClass,
                 shape: 'rect',
-                padding: 12,
-                width: 180,
+                padding: 14,
+                width: 200,
                 height: 60
             });
         });
@@ -101,7 +165,7 @@
         const scale = Math.min(
             fullWidth / (bounds.width + 80),
             fullHeight / (bounds.height + 80),
-            1.5
+            1.2
         );
         const translateX = (fullWidth - bounds.width * scale) / 2;
         const translateY = (fullHeight - bounds.height * scale) / 2;
