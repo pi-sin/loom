@@ -44,8 +44,7 @@ public class LoomHandlerAdapter implements HandlerAdapter {
     @Override
     public ModelAndView handle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         LoomRequestHandler loomHandler = (LoomRequestHandler) handler;
-        PathMatcher pathMatcher = loomHandler.getPathMatcher();
-        Map<String, String> pathVars = pathMatcher.extractVariables(request.getRequestURI());
+        Map<String, String> pathVars = loomHandler.getPathVariables();
         String requestId = UUID.randomUUID().toString();
 
         LoomHttpContextImpl httpContext = new LoomHttpContextImpl(

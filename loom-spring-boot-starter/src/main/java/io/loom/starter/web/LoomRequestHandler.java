@@ -2,21 +2,18 @@ package io.loom.starter.web;
 
 import io.loom.core.model.ApiDefinition;
 
+import java.util.Map;
+
+import lombok.Getter;
+
+@Getter
 public class LoomRequestHandler {
 
     private final ApiDefinition apiDefinition;
-    private final PathMatcher pathMatcher;
+    private final Map<String, String> pathVariables;
 
-    public LoomRequestHandler(ApiDefinition apiDefinition, PathMatcher pathMatcher) {
+    public LoomRequestHandler(ApiDefinition apiDefinition, Map<String, String> pathVariables) {
         this.apiDefinition = apiDefinition;
-        this.pathMatcher = pathMatcher;
-    }
-
-    public ApiDefinition getApiDefinition() {
-        return apiDefinition;
-    }
-
-    public PathMatcher getPathMatcher() {
-        return pathMatcher;
+        this.pathVariables = pathVariables;
     }
 }

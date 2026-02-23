@@ -2,8 +2,7 @@ package io.loom.starter.scanner;
 
 import io.loom.core.annotation.LoomApi;
 import io.loom.core.annotation.LoomGraph;
-import io.loom.core.annotation.LoomHeaderParam;
-import io.loom.core.annotation.LoomUpstream;
+import io.loom.core.annotation.LoomProxy;
 import io.loom.core.engine.Dag;
 import io.loom.core.engine.DagCompiler;
 import io.loom.core.model.ApiDefinition;
@@ -43,7 +42,7 @@ public class LoomAnnotationScanner {
             Class<?> apiClass = entry.getValue().getClass();
             LoomApi api = apiClass.getAnnotation(LoomApi.class);
             LoomGraph graph = apiClass.getAnnotation(LoomGraph.class);
-            LoomUpstream upstream = apiClass.getAnnotation(LoomUpstream.class);
+            LoomProxy upstream = apiClass.getAnnotation(LoomProxy.class);
 
             if (api == null) continue;
 
@@ -100,7 +99,7 @@ public class LoomAnnotationScanner {
                         api.method(), api.path(), upstream.name(), upstream.path(),
                         apiClass.getSimpleName());
             } else {
-                log.warn("[Loom] Skipping @LoomApi class {} — missing @LoomGraph or @LoomUpstream",
+                log.warn("[Loom] Skipping @LoomApi class {} — missing @LoomGraph or @LoomProxy",
                         apiClass.getSimpleName());
             }
         }

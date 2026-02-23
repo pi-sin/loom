@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Bean;
 @Slf4j
 @AutoConfiguration
 @ConditionalOnProperty(prefix = "loom", name = "enabled", havingValue = "true", matchIfMissing = true)
-public class LoomUpstreamAutoConfiguration {
+public class LoomProxyAutoConfiguration {
 
     @Bean
     public UpstreamClientRegistry upstreamClientRegistry(LoomProperties properties,

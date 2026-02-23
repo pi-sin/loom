@@ -14,6 +14,7 @@ import java.util.Map;
 public class LoomHandlerMapping extends AbstractHandlerMapping {
 
     private final ApiRegistry apiRegistry;
+    private volatile RouteTrie routeTrie;
 
     public LoomHandlerMapping(ApiRegistry apiRegistry) {
         this.apiRegistry = apiRegistry;
@@ -22,20 +23,39 @@ public class LoomHandlerMapping extends AbstractHandlerMapping {
 
     @Override
     protected Object getHandlerInternal(HttpServletRequest request) {
+        RouteTrie trie = getOrBuildTrie();
+
         String method = request.getMethod();
         String path = request.getRequestURI();
 
-        for (ApiDefinition api : apiRegistry.getAllApis()) {
-            PathMatcher matcher = new PathMatcher(api.path());
-            if (api.method().equalsIgnoreCase(method) && matcher.matches(path)) {
-                Map<String, String> vars = matcher.extractVariables(path);
-                request.setAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE, vars);
-                log.debug("[Loom] Matched API: {} {} ({})", method, api.path(),
-                        api.isPassthrough() ? "passthrough" : "builder");
-                return new LoomRequestHandler(api, matcher);
-            }
+        RouteTrie.RouteMatch match = trie.find(method, path);
+        if (match == null) {
+            return null;
         }
 
-        return null;
+        request.setAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE, match.pathVariables());
+        ApiDefinition api = match.api();
+        log.debug("[Loom] Matched API: {} {} ({})", method, api.path(),
+                api.isPassthrough() ? "passthrough" : "builder");
+        return new LoomRequestHandler(api, match.pathVariables());
+    }
+
+    private RouteTrie getOrBuildTrie() {
+        RouteTrie trie = this.routeTrie;
+        if (trie != null) {
+            return trie;
+        }
+        synchronized (this) {
+            if (this.routeTrie != null) {
+                return this.routeTrie;
+            }
+            trie = new RouteTrie();
+            for (ApiDefinition api : apiRegistry.getAllApis()) {
+                trie.insert(api);
+            }
+            this.routeTrie = trie;
+            log.info("[Loom] Built route trie with {} routes", apiRegistry.getAllApis().size());
+            return trie;
+        }
     }
 }

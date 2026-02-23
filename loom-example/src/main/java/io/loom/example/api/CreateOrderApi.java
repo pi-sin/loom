@@ -2,7 +2,7 @@ package io.loom.example.api;
 
 import io.loom.core.annotation.LoomApi;
 import io.loom.core.annotation.LoomHeaderParam;
-import io.loom.core.annotation.LoomUpstream;
+import io.loom.core.annotation.LoomProxy;
 import io.loom.example.dto.CreateOrderRequest;
 import io.loom.example.dto.OrderResponse;
 import io.loom.example.interceptor.ApiKeyInterceptor;
@@ -15,5 +15,5 @@ import io.loom.example.interceptor.ApiKeyInterceptor;
          summary = "Create a new order",
          tags = {"Orders"},
          headers = {@LoomHeaderParam(name = "X-API-Key", required = true, description = "API key")})
-@LoomUpstream(name = "order-service", path = "/internal/orders")
+@LoomProxy(name = "order-service", path = "/internal/orders")
 public class CreateOrderApi {}

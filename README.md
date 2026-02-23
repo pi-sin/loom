@@ -30,7 +30,7 @@ Loom executes it with maximum parallelism using virtual threads.
 ## Features
 
 - **Declarative DAG composition** — Define scatter-gather flows with annotations
-- **Unified passthrough** — Proxy upstream APIs with `@LoomApi` + `@LoomUpstream`, inheriting
+- **Unified passthrough** — Proxy upstream APIs with `@LoomApi` + `@LoomProxy`, inheriting
   interceptors, swagger schemas, and typed request/response for free
 - **Virtual thread execution** — Every request, every DAG node, every upstream call runs on a
   virtual thread
@@ -150,7 +150,7 @@ loom:
 
 ### 5. Add a Passthrough API
 
-Passthrough APIs use `@LoomApi` + `@LoomUpstream` — they get interceptors, swagger schemas, and
+Passthrough APIs use `@LoomApi` + `@LoomProxy` — they get interceptors, swagger schemas, and
 typed request/response for free:
 
 ```java
@@ -159,7 +159,7 @@ typed request/response for free:
          interceptors = {ApiKeyInterceptor.class},
          summary = "Create a new order", tags = {"Orders"},
          headers = {@LoomHeaderParam(name = "X-API-Key", required = true, description = "API key")})
-@LoomUpstream(name = "order-service", path = "/internal/orders")
+@LoomProxy(name = "order-service", path = "/internal/orders")
 public class CreateOrderApi {}
 ```
 
@@ -171,7 +171,7 @@ For simple passthrough routes without typed schemas:
 
 ```java
 @LoomApi(method = "GET", path = "/api/health", summary = "Health check", tags = {"Infrastructure"})
-@LoomUpstream(name = "health-service", path = "/internal/health")
+@LoomProxy(name = "health-service", path = "/internal/health")
 public class HealthCheckApi {}
 ```
 
@@ -229,7 +229,7 @@ Interceptor chain (per-route, same for both modes)
   |                          v
   |                        Response DTO
   |
-  +--[@LoomUpstream]-----> RestClient -> Upstream -> Response
+  +--[@LoomProxy]--------> RestClient -> Upstream -> Response
   |
   v
 HTTP Response
@@ -258,7 +258,7 @@ dependencies resolve.
 | `@LoomApi`         | Class  | Route definition (method, path, request/response types, interceptors, docs) |
 | `@LoomGraph`       | Class  | DAG definition, placed on same class as `@LoomApi`                          |
 | `@Node`            | Nested | Individual DAG node (builder class, dependencies, required, timeout)        |
-| `@LoomUpstream`    | Class  | Upstream target for passthrough APIs, placed on same class as `@LoomApi`    |
+| `@LoomProxy`       | Class  | Upstream target for passthrough APIs, placed on same class as `@LoomApi`    |
 | `@LoomQueryParam`  | Nested | Declares a query parameter (name, type, required, default, description)     |
 | `@LoomHeaderParam` | Nested | Declares a required/documented header (name, required, description)         |
 
@@ -352,7 +352,7 @@ Passthrough APIs use the same `@LoomApi` annotation, so they get full swagger su
          request = CreateOrderRequest.class, response = OrderResponse.class,
          summary = "Create a new order", tags = {"Orders"},
          headers = {@LoomHeaderParam(name = "X-API-Key", required = true, description = "API key")})
-@LoomUpstream(name = "order-service", path = "/internal/orders")
+@LoomProxy(name = "order-service", path = "/internal/orders")
 public class CreateOrderApi {}
 ```
 

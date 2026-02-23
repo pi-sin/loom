@@ -1,4 +1,4 @@
 io.loom.starter.config.LoomAutoConfiguration
-io.loom.starter.upstream.LoomUpstreamAutoConfiguration
+io.loom.starter.upstream.LoomProxyAutoConfiguration
 io.loom.starter.scanner.LoomInitializer
 io.loom.starter.swagger.LoomOpenApiConfiguration
