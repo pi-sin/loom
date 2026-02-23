@@ -5,6 +5,10 @@ import io.loom.core.model.HeaderParamDefinition;
 import io.loom.core.model.PassthroughDefinition;
 import io.loom.core.model.QueryParamDefinition;
 import io.loom.core.registry.ApiRegistry;
+import io.swagger.v3.core.converter.AnnotatedType;
+import io.swagger.v3.core.converter.ModelConverters;
+import io.swagger.v3.core.converter.ResolvedSchema;
+import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
@@ -29,7 +33,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -55,6 +64,23 @@ public class LoomOpenApiConfiguration {
             for (PassthroughDefinition pt : apiRegistry.getAllPassthroughs()) {
                 addPassthroughPath(openApi, pt);
             }
+
+            // Resolve domain type schemas for request/response types
+            for (ApiDefinition api : apiRegistry.getAllApis()) {
+                if (api.requestType() != null && api.requestType() != void.class) {
+                    resolveAndAddSchema(openApi, api.requestType());
+                }
+                if (api.responseType() != null && api.responseType() != void.class) {
+                    resolveAndAddSchema(openApi, api.responseType());
+                }
+            }
+
+            // Remove unreferenced schemas (Spring internals from controller scanning)
+            cleanupUnreferencedSchemas(openApi);
+
+            // Sort schemas alphabetically
+            sortSchemas(openApi);
+
             log.info("[Loom] Registered {} API routes and {} passthrough routes in OpenAPI spec",
                     apiRegistry.getAllApis().size(), apiRegistry.getAllPassthroughs().size());
         };
@@ -230,5 +256,157 @@ public class LoomOpenApiConfiguration {
             case "OPTIONS" -> pathItem.setOptions(operation);
             default -> pathItem.setGet(operation);
         }
+    }
+
+    // ── Schema resolution & cleanup ──────────────────────────────────────
+
+    @SuppressWarnings("rawtypes")
+    private void resolveAndAddSchema(OpenAPI openApi, Class<?> type) {
+        ResolvedSchema resolved = ModelConverters.getInstance()
+                .resolveAsResolvedSchema(new AnnotatedType(type));
+        if (resolved == null || resolved.schema == null) {
+            return;
+        }
+        if (openApi.getComponents() == null) {
+            openApi.setComponents(new Components());
+        }
+        Map<String, Schema> schemas = openApi.getComponents().getSchemas();
+        if (schemas == null) {
+            schemas = new LinkedHashMap<>();
+            openApi.getComponents().setSchemas(schemas);
+        }
+        // Add the top-level schema
+        schemas.put(type.getSimpleName(), resolved.schema);
+        // Add all nested/referenced schemas
+        if (resolved.referencedSchemas != null) {
+            schemas.putAll(resolved.referencedSchemas);
+        }
+    }
+
+    @SuppressWarnings("rawtypes")
+    private void sortSchemas(OpenAPI openApi) {
+        if (openApi.getComponents() == null || openApi.getComponents().getSchemas() == null) {
+            return;
+        }
+        openApi.getComponents().setSchemas(new TreeMap<>(openApi.getComponents().getSchemas()));
+    }
+
+    @SuppressWarnings("rawtypes")
+    private void cleanupUnreferencedSchemas(OpenAPI openApi) {
+        if (openApi.getComponents() == null || openApi.getComponents().getSchemas() == null) {
+            return;
+        }
+        Set<String> referenced = collectReferencedSchemas(openApi);
+        Map<String, Schema> schemas = openApi.getComponents().getSchemas();
+        schemas.keySet().retainAll(referenced);
+    }
+
+    @SuppressWarnings("rawtypes")
+    private Set<String> collectReferencedSchemas(OpenAPI openApi) {
+        Set<String> refs = new HashSet<>();
+        if (openApi.getPaths() == null) {
+            return refs;
+        }
+        // Collect direct $ref targets from all path operations
+        for (PathItem pathItem : openApi.getPaths().values()) {
+            for (Operation op : pathItem.readOperations()) {
+                // Request body
+                if (op.getRequestBody() != null && op.getRequestBody().getContent() != null) {
+                    collectRefsFromContent(op.getRequestBody().getContent(), refs);
+                }
+                // Responses
+                if (op.getResponses() != null) {
+                    for (ApiResponse resp : op.getResponses().values()) {
+                        if (resp.getContent() != null) {
+                            collectRefsFromContent(resp.getContent(), refs);
+                        }
+                    }
+                }
+            }
+        }
+        // Transitively resolve nested $refs from schemas
+        Map<String, Schema> schemas = openApi.getComponents() != null
+                ? openApi.getComponents().getSchemas() : null;
+        if (schemas != null) {
+            Set<String> queue = new HashSet<>(refs);
+            while (!queue.isEmpty()) {
+                Set<String> next = new HashSet<>();
+                for (String name : queue) {
+                    Schema schema = schemas.get(name);
+                    if (schema != null) {
+                        Set<String> nested = new HashSet<>();
+                        collectRefsFromSchema(schema, nested);
+                        for (String n : nested) {
+                            if (refs.add(n)) {
+                                next.add(n);
+                            }
+                        }
+                    }
+                }
+                queue = next;
+            }
+        }
+        return refs;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void collectRefsFromContent(Content content, Set<String> refs) {
+        if (content == null) return;
+        for (MediaType mt : content.values()) {
+            if (mt.getSchema() != null) {
+                collectRefsFromSchema(mt.getSchema(), refs);
+            }
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void collectRefsFromSchema(Schema schema, Set<String> refs) {
+        if (schema == null) return;
+        // Direct $ref
+        if (schema.get$ref() != null) {
+            String refName = extractSchemaName(schema.get$ref());
+            if (refName != null) {
+                refs.add(refName);
+            }
+        }
+        // Properties
+        if (schema.getProperties() != null) {
+            for (Schema prop : ((Map<String, Schema>) schema.getProperties()).values()) {
+                collectRefsFromSchema(prop, refs);
+            }
+        }
+        // Items (array schemas)
+        if (schema.getItems() != null) {
+            collectRefsFromSchema(schema.getItems(), refs);
+        }
+        // Composition: allOf, oneOf, anyOf
+        if (schema.getAllOf() != null) {
+            for (Schema s : (List<Schema>) schema.getAllOf()) {
+                collectRefsFromSchema(s, refs);
+            }
+        }
+        if (schema.getOneOf() != null) {
+            for (Schema s : (List<Schema>) schema.getOneOf()) {
+                collectRefsFromSchema(s, refs);
+            }
+        }
+        if (schema.getAnyOf() != null) {
+            for (Schema s : (List<Schema>) schema.getAnyOf()) {
+                collectRefsFromSchema(s, refs);
+            }
+        }
+        // additionalProperties (when it's a Schema)
+        if (schema.getAdditionalProperties() instanceof Schema) {
+            collectRefsFromSchema((Schema) schema.getAdditionalProperties(), refs);
+        }
+    }
+
+    private String extractSchemaName(String ref) {
+        if (ref == null) return null;
+        String prefix = "#/components/schemas/";
+        if (ref.startsWith(prefix)) {
+            return ref.substring(prefix.length());
+        }
+        return null;
     }
 }
