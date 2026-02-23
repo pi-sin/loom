@@ -6,7 +6,7 @@ server:
   port: 8080
 
 loom:
-  upstreams:
+  services:
     product-service:
       base-url: http://localhost:8081
       connect-timeout-ms: 3000

@@ -21,18 +21,18 @@
 
 # Loom Framework
 
-**Java 21 API Gateway/BFF framework with DAG-based scatter-gather, powered by virtual threads.**
+**High Performant Java 21 API Gateway/BFF framework with DAG-based scatter-gather, powered by virtual threads.**
 
 Loom makes it trivial to build API gateways and Backend-for-Frontend (BFF) services that aggregate
-data from multiple upstream services. Define your data flow as a directed acyclic graph (DAG), and
+data from multiple services. Define your data flow as a directed acyclic graph (DAG), and
 Loom executes it with maximum parallelism using virtual threads.
 
 ## Features
 
 - **Declarative DAG composition** — Define scatter-gather flows with annotations
-- **Unified passthrough** — Proxy upstream APIs with `@LoomApi` + `@LoomProxy`, inheriting
+- **Unified passthrough** — Proxy service APIs with `@LoomApi` + `@LoomProxy`, inheriting
   interceptors, swagger schemas, and typed request/response for free
-- **Virtual thread execution** — Every request, every DAG node, every upstream call runs on a
+- **Virtual thread execution** — Every request, every DAG node, every service call runs on a
   virtual thread
 - **Compile-time type safety** — Dependencies reference builder classes, not strings
 - **Auto terminal detection** — The builder whose output matches the response type is the terminal
@@ -116,7 +116,7 @@ public class ProductDetailApi {}
 public class FetchProductBuilder implements LoomBuilder<ProductInfo> {
     public ProductInfo build(BuilderContext ctx) {
         String id = ctx.getPathVariable("id");
-        return ctx.upstream("product-service").get("/products/" + id, ProductInfo.class);
+        return ctx.service("product-service").get("/products/" + id, ProductInfo.class);
     }
 }
 
@@ -131,7 +131,7 @@ public class AssembleProductBuilder implements LoomBuilder<ProductDetailResponse
 }
 ```
 
-### 4. Configure Upstreams
+### 4. Configure Services
 
 ```yaml
 spring:
@@ -140,7 +140,7 @@ spring:
       enabled: true
 
 loom:
-  upstreams:
+  services:
     product-service:
       base-url: http://localhost:8081
       retry:
@@ -163,7 +163,7 @@ typed request/response for free:
 public class CreateOrderApi {}
 ```
 
-The upstream HTTP call inherits the method from `@LoomApi.method()`. Client request headers are
+The service HTTP call inherits the method from `@LoomApi.method()`. Client request headers are
 forwarded (excluding `Host` and `Content-Length`), and the request body is forwarded as-is for
 POST/PUT/PATCH.
 
@@ -229,7 +229,7 @@ Interceptor chain (per-route, same for both modes)
   |                          v
   |                        Response DTO
   |
-  +--[@LoomProxy]--------> RestClient -> Upstream -> Response
+  +--[@LoomProxy]--------> RestClient -> Service -> Response
   |
   v
 HTTP Response
@@ -258,7 +258,7 @@ dependencies resolve.
 | `@LoomApi`         | Class  | Route definition (method, path, request/response types, interceptors, docs) |
 | `@LoomGraph`       | Class  | DAG definition, placed on same class as `@LoomApi`                          |
 | `@Node`            | Nested | Individual DAG node (builder class, dependencies, required, timeout)        |
-| `@LoomProxy`       | Class  | Upstream target for passthrough APIs, placed on same class as `@LoomApi`    |
+| `@LoomProxy`       | Class  | Service target for passthrough APIs, placed on same class as `@LoomApi`     |
 | `@LoomQueryParam`  | Nested | Declares a query parameter (name, type, required, default, description)     |
 | `@LoomHeaderParam` | Nested | Declares a required/documented header (name, required, description)         |
 
@@ -269,7 +269,7 @@ dependencies resolve.
 | `LoomBuilder<O>`  | DAG node implementation. `O build(BuilderContext ctx)`                                                |
 | `BuilderContext`  | Shared context for all builders in a request                                                          |
 | `LoomInterceptor` | Request/response processing. `void handle(LoomHttpContext, InterceptorChain)` + `default int order()` |
-| `UpstreamClient`  | HTTP client for upstream calls (get/post/put/delete/patch)                                            |
+| `ServiceClient`   | HTTP client for service calls (get/post/put/delete/patch)                                             |
 
 ### BuilderContext Methods
 
@@ -283,7 +283,7 @@ dependencies resolve.
 | `getResultOf(builderClass)`         | Get dependency by builder class (throws if missing) |
 | `getOptionalDependency(outputType)` | Get optional dependency by output type              |
 | `getOptionalResultOf(builderClass)` | Get optional dependency by builder class            |
-| `upstream(name)`                    | Get upstream HTTP client                            |
+| `service(name)`                     | Get service HTTP client                             |
 | `getAttribute(key, type)`           | Get attribute set by interceptor                    |
 | `getRequestId()`                    | Auto-generated correlation ID                       |
 
@@ -291,7 +291,7 @@ dependencies resolve.
 
 ```yaml
 loom:
-  upstreams:
+  services:
     service-name:
       base-url: http://host:port
       connect-timeout-ms: 5000
@@ -364,7 +364,7 @@ loom:
     enabled: true   # default: false, must opt in to enable
 ```
 
-## Upstream API Cookbook
+## Service API Cookbook
 
 ### GET with Path Params
 
@@ -374,7 +374,7 @@ loom:
 public class FetchProductBuilder implements LoomBuilder<ProductInfo> {
     public ProductInfo build(BuilderContext ctx) {
         String id = ctx.getPathVariable("id");
-        return ctx.upstream("product-service").get("/products/" + id, ProductInfo.class);
+        return ctx.service("product-service").get("/products/" + id, ProductInfo.class);
     }
 }
 ```
@@ -394,7 +394,7 @@ public class SearchProductsBuilder implements LoomBuilder<ProductList> {
                 "/products?category=" + category + "&page=" + (page != null ? page : "1") + "&sort="
                         + (sort != null ? sort : "relevance");
 
-        return ctx.upstream("product-service").get(path, ProductList.class);
+        return ctx.service("product-service").get(path, ProductList.class);
     }
 }
 ```
@@ -421,13 +421,13 @@ public record CreateOrderRequest(String productId, int quantity, String shipping
 
 public record OrderResponse(String orderId, String status, String estimatedDelivery) {}
 
-// Builder — reads the incoming request body, POSTs to upstream
+// Builder — reads the incoming request body, POSTs to service
 @Component
 public class CreateOrderBuilder implements LoomBuilder<OrderResponse> {
     public OrderResponse build(BuilderContext ctx) {
         CreateOrderRequest request = ctx.getRequestBody(CreateOrderRequest.class);
 
-        return ctx.upstream("order-service").post("/internal/orders", request, OrderResponse.class);
+        return ctx.service("order-service").post("/internal/orders", request, OrderResponse.class);
     }
 }
 ```
@@ -447,7 +447,7 @@ public class UpdateProfileBuilder implements LoomBuilder<UserProfile> {
                                              "X-Request-ID", ctx.getRequestId(), "Content-Type",
                                              "application/json");
 
-        return ctx.upstream("user-service")
+        return ctx.service("user-service")
                 .put("/users/" + userId, body, UserProfile.class, headers);
     }
 }
@@ -463,7 +463,7 @@ public class DeleteCartItemBuilder implements LoomBuilder<Void> {
         String cartId = ctx.getPathVariable("cartId");
         String itemId = ctx.getPathVariable("itemId");
 
-        return ctx.upstream("cart-service")
+        return ctx.service("cart-service")
                 .delete("/carts/" + cartId + "/items/" + itemId, Void.class);
     }
 }
@@ -479,7 +479,7 @@ public class PatchOrderBuilder implements LoomBuilder<OrderResponse> {
         String orderId = ctx.getPathVariable("orderId");
         Map<String, Object> patch = ctx.getRequestBody(Map.class);
 
-        return ctx.upstream("order-service")
+        return ctx.service("order-service")
                 .patch("/orders/" + orderId, patch, OrderResponse.class);
     }
 }
@@ -510,7 +510,7 @@ public class FetchUserDataBuilder implements LoomBuilder<UserData> {
         Map<String, String> headers = Map.of("X-User-ID", user.id(), "X-Correlation-ID",
                                              ctx.getRequestId());
 
-        return ctx.upstream("user-service")
+        return ctx.service("user-service")
                 .get("/users/" + user.id() + "/data", UserData.class, headers);
     }
 }
@@ -577,7 +577,7 @@ public class DebugBuilder implements LoomBuilder<Map<String, Object>> {
 }
 ```
 
-### UpstreamClient Method Reference
+### ServiceClient Method Reference
 
 | Method   | Signature                                  | Use Case                 |
 |----------|--------------------------------------------|--------------------------|
@@ -592,9 +592,9 @@ public class DebugBuilder implements LoomBuilder<Map<String, Object>> {
 | `patch`  | `patch(path, body, responseType)`          | Partial update           |
 | `patch`  | `patch(path, body, responseType, headers)` | Partial update + headers |
 
-All upstream calls are **blocking on virtual threads** — the virtual thread unmounts from the
+All service calls are **blocking on virtual threads** — the virtual thread unmounts from the
 carrier thread during I/O wait, so blocking is as efficient as async with much simpler code. Retry
-with exponential backoff is automatic based on upstream configuration.
+with exponential backoff is automatic based on service configuration.
 
 ## Virtual Threads
 
@@ -604,7 +604,7 @@ Loom uses virtual threads at every layer:
    `spring.threads.virtual.enabled: true`)
 2. **DAG execution** — Each builder node runs on its own virtual thread via
    `Executors.newVirtualThreadPerTaskExecutor()`
-3. **Upstream calls** — Blocking `RestClient` calls unmount from carrier threads during I/O
+3. **Service calls** — Blocking `RestClient` calls unmount from carrier threads during I/O
 4. **Retry backoff** — `Thread.sleep()` on virtual threads has zero platform thread cost
 5. **Interceptors** — Entire chain runs on the request's virtual thread; blocking calls are safe
 

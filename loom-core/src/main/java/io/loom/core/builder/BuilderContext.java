@@ -1,6 +1,6 @@
 package io.loom.core.builder;
 
-import io.loom.core.upstream.UpstreamClient;
+import io.loom.core.service.ServiceClient;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,8 +24,8 @@ public interface BuilderContext {
     <T> Optional<T> getOptionalDependency(Class<T> outputType);
     <T> Optional<T> getOptionalResultOf(Class<? extends LoomBuilder<T>> builderClass);
 
-    // Upstream HTTP client
-    UpstreamClient upstream(String name);
+    // Service HTTP client
+    ServiceClient service(String name);
 
     // Custom attributes
     void setAttribute(String key, Object value);

@@ -33,9 +33,9 @@ public class LoomExceptionHandler {
         return buildResponse(HttpStatus.GATEWAY_TIMEOUT, ex);
     }
 
-    @ExceptionHandler(UpstreamException.class)
-    public ResponseEntity<Map<String, Object>> handleUpstream(UpstreamException ex) {
-        log.error("[Loom] Upstream error: {}", ex.getMessage(), ex);
+    @ExceptionHandler(ServiceClientException.class)
+    public ResponseEntity<Map<String, Object>> handleServiceClient(ServiceClientException ex) {
+        log.error("[Loom] Service client error: {}", ex.getMessage(), ex);
         HttpStatus status = ex.getStatusCode() > 0
                 ? HttpStatus.valueOf(ex.getStatusCode())
                 : HttpStatus.BAD_GATEWAY;

@@ -4,8 +4,8 @@ import io.loom.core.builder.BuilderContext;
 import io.loom.core.builder.LoomBuilder;
 import io.loom.core.exception.DependencyResolutionException;
 import io.loom.core.exception.LoomException;
-import io.loom.core.upstream.UpstreamClient;
-import io.loom.starter.upstream.UpstreamClientRegistry;
+import io.loom.core.service.ServiceClient;
+import io.loom.starter.service.ServiceClientRegistry;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,7 +19,7 @@ public class SpringBuilderContext implements BuilderContext {
     private final Map<String, List<String>> headers;
     private final byte[] rawRequestBody;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
-    private final UpstreamClientRegistry upstreamRegistry;
+    private final ServiceClientRegistry serviceRegistry;
     private final String requestId;
     private final Object cachedRequestBody;
 
@@ -33,7 +33,7 @@ public class SpringBuilderContext implements BuilderContext {
                                 Map<String, List<String>> headers,
                                 byte[] rawRequestBody,
                                 com.fasterxml.jackson.databind.ObjectMapper objectMapper,
-                                UpstreamClientRegistry upstreamRegistry,
+                                ServiceClientRegistry serviceRegistry,
                                 String requestId,
                                 Object cachedRequestBody) {
         this.httpMethod = httpMethod;
@@ -43,7 +43,7 @@ public class SpringBuilderContext implements BuilderContext {
         this.headers = headers != null ? headers : Map.of();
         this.rawRequestBody = rawRequestBody;
         this.objectMapper = objectMapper;
-        this.upstreamRegistry = upstreamRegistry;
+        this.serviceRegistry = serviceRegistry;
         this.requestId = requestId;
         this.cachedRequestBody = cachedRequestBody;
     }
@@ -150,8 +150,8 @@ public class SpringBuilderContext implements BuilderContext {
     }
 
     @Override
-    public UpstreamClient upstream(String name) {
-        return upstreamRegistry.getClient(name);
+    public ServiceClient service(String name) {
+        return serviceRegistry.getClient(name);
     }
 
     @Override

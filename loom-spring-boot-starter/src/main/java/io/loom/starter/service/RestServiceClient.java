@@ -1,33 +1,43 @@
-package io.loom.starter.upstream;
+package io.loom.starter.service;
 
 import io.loom.core.engine.RetryExecutor;
-import io.loom.core.exception.UpstreamException;
-import io.loom.core.upstream.RetryConfig;
-import io.loom.core.upstream.UpstreamClient;
-import io.loom.core.upstream.UpstreamConfig;
+import io.loom.core.exception.ServiceClientException;
+import io.loom.core.service.RetryConfig;
+import io.loom.core.service.ServiceClient;
+import io.loom.core.service.ServiceConfig;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.Map;
 
 @Slf4j
-public class RestClientUpstreamClient implements UpstreamClient {
+public class RestServiceClient implements ServiceClient {
 
     private final String name;
     private final RestClient restClient;
     private final RetryExecutor retryExecutor;
     private final RetryConfig retryConfig;
 
-    public RestClientUpstreamClient(UpstreamConfig config, RetryExecutor retryExecutor) {
+    public RestServiceClient(ServiceConfig config, RetryExecutor retryExecutor) {
         this.name = config.name();
         this.retryExecutor = retryExecutor;
         this.retryConfig = config.retry();
+
+        var httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(config.connectTimeoutMs()))
+                .build();
+        var requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(Duration.ofMillis(config.readTimeoutMs()));
+
         this.restClient = RestClient.builder()
                 .baseUrl(config.baseUrl())
+                .requestFactory(requestFactory)
                 .build();
-        log.info("[Loom] Created upstream client '{}' -> {}", name, config.baseUrl());
+        log.info("[Loom] Created service client '{}' -> {}", name, config.baseUrl());
     }
 
     @Override
@@ -43,9 +53,9 @@ public class RestClientUpstreamClient implements UpstreamClient {
                 headers.forEach(spec::header);
                 return spec.retrieve().body(responseType);
             } catch (RestClientResponseException e) {
-                throw new UpstreamException(name, e.getStatusCode().value(), e.getMessage());
+                throw new ServiceClientException(name, e.getStatusCode().value(), e.getMessage());
             } catch (Exception e) {
-                throw new UpstreamException(name, e.getMessage(), e);
+                throw new ServiceClientException(name, e.getMessage(), e);
             }
         }, retryConfig, name + " GET " + path);
     }
@@ -66,9 +76,9 @@ public class RestClientUpstreamClient implements UpstreamClient {
                 }
                 return spec.retrieve().body(responseType);
             } catch (RestClientResponseException e) {
-                throw new UpstreamException(name, e.getStatusCode().value(), e.getMessage());
+                throw new ServiceClientException(name, e.getStatusCode().value(), e.getMessage());
             } catch (Exception e) {
-                throw new UpstreamException(name, e.getMessage(), e);
+                throw new ServiceClientException(name, e.getMessage(), e);
             }
         }, retryConfig, name + " POST " + path);
     }
@@ -89,9 +99,9 @@ public class RestClientUpstreamClient implements UpstreamClient {
                 }
                 return spec.retrieve().body(responseType);
             } catch (RestClientResponseException e) {
-                throw new UpstreamException(name, e.getStatusCode().value(), e.getMessage());
+                throw new ServiceClientException(name, e.getStatusCode().value(), e.getMessage());
             } catch (Exception e) {
-                throw new UpstreamException(name, e.getMessage(), e);
+                throw new ServiceClientException(name, e.getMessage(), e);
             }
         }, retryConfig, name + " PUT " + path);
     }
@@ -109,9 +119,9 @@ public class RestClientUpstreamClient implements UpstreamClient {
                 headers.forEach(spec::header);
                 return spec.retrieve().body(responseType);
             } catch (RestClientResponseException e) {
-                throw new UpstreamException(name, e.getStatusCode().value(), e.getMessage());
+                throw new ServiceClientException(name, e.getStatusCode().value(), e.getMessage());
             } catch (Exception e) {
-                throw new UpstreamException(name, e.getMessage(), e);
+                throw new ServiceClientException(name, e.getMessage(), e);
             }
         }, retryConfig, name + " DELETE " + path);
     }
@@ -132,9 +142,9 @@ public class RestClientUpstreamClient implements UpstreamClient {
                 }
                 return spec.retrieve().body(responseType);
             } catch (RestClientResponseException e) {
-                throw new UpstreamException(name, e.getStatusCode().value(), e.getMessage());
+                throw new ServiceClientException(name, e.getStatusCode().value(), e.getMessage());
             } catch (Exception e) {
-                throw new UpstreamException(name, e.getMessage(), e);
+                throw new ServiceClientException(name, e.getMessage(), e);
             }
         }, retryConfig, name + " PATCH " + path);
     }

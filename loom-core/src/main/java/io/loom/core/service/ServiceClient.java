@@ -1,8 +1,8 @@
-package io.loom.core.upstream;
+package io.loom.core.service;
 
 import java.util.Map;
 
-public interface UpstreamClient {
+public interface ServiceClient {
     <T> T get(String path, Class<T> responseType);
     <T> T get(String path, Class<T> responseType, Map<String, String> headers);
 

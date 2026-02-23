@@ -44,7 +44,7 @@ public class LoomAnnotationScanner {
             Class<?> apiClass = entry.getValue().getClass();
             LoomApi api = apiClass.getAnnotation(LoomApi.class);
             LoomGraph graph = apiClass.getAnnotation(LoomGraph.class);
-            LoomProxy upstream = apiClass.getAnnotation(LoomProxy.class);
+            LoomProxy service = apiClass.getAnnotation(LoomProxy.class);
 
             if (api == null) continue;
 
@@ -83,7 +83,7 @@ public class LoomAnnotationScanner {
                 apiRegistry.registerApi(definition);
                 log.info("[Loom] Scanned builder API: {} {} from {}",
                         api.method(), api.path(), apiClass.getSimpleName());
-            } else if (upstream != null) {
+            } else if (service != null) {
                 ValidationPlan validationPlan = RequestValidator.compile(
                         queryParams, headerParams, api.request(), api.method());
 
@@ -99,13 +99,13 @@ public class LoomAnnotationScanner {
                         api.tags(),
                         queryParams,
                         headerParams,
-                        upstream.name(),
-                        upstream.path(),
+                        service.name(),
+                        service.path(),
                         validationPlan
                 );
                 apiRegistry.registerApi(definition);
                 log.info("[Loom] Scanned passthrough API: {} {} -> {}{} from {}",
-                        api.method(), api.path(), upstream.name(), upstream.path(),
+                        api.method(), api.path(), service.name(), service.path(),
                         apiClass.getSimpleName());
             } else {
                 log.warn("[Loom] Skipping @LoomApi class {} — missing @LoomGraph or @LoomProxy",

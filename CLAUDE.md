@@ -30,9 +30,9 @@ cd loom-example && mvn spring-boot:run
 
 Four Maven modules with a strict dependency hierarchy:
 
-- **loom-core** — Pure Java, zero Spring dependencies. Contains annotations (`@LoomApi`, `@LoomGraph`, `@Node`, `@LoomProxy`), core interfaces (`LoomBuilder<O>`, `BuilderContext`, `LoomInterceptor`, `UpstreamClient`), and the DAG engine (`DagCompiler`, `DagValidator`, `DagExecutor`).
+- **loom-core** — Pure Java, zero Spring dependencies. Contains annotations (`@LoomApi`, `@LoomGraph`, `@Node`, `@LoomProxy`), core interfaces (`LoomBuilder<O>`, `BuilderContext`, `LoomInterceptor`, `ServiceClient`), and the DAG engine (`DagCompiler`, `DagValidator`, `DagExecutor`).
 
-- **loom-spring-boot-starter** — Spring Boot auto-configuration layer. Wires core engine into Spring's HTTP dispatch via custom `LoomHandlerMapping` → `LoomHandlerAdapter` → `LoomRequestHandler`. Handles classpath scanning (`LoomAnnotationScanner`), upstream client management (`RestClientUpstreamClient`), and interceptor chains.
+- **loom-spring-boot-starter** — Spring Boot auto-configuration layer. Wires core engine into Spring's HTTP dispatch via custom `LoomHandlerMapping` → `LoomHandlerAdapter` → `LoomRequestHandler`. Handles classpath scanning (`LoomAnnotationScanner`), service client management (`RestServiceClient`), and interceptor chains.
 
 - **loom-ui** — Embedded D3.js + dagre-d3 DAG visualization served at `/loom/ui`. Auto-configured as a Spring bean.
 
@@ -40,13 +40,13 @@ Four Maven modules with a strict dependency hierarchy:
 
 ## Key Architectural Concepts
 
-**Request flow:** HTTP request → `LoomHandlerMapping` (route match) → interceptor chain → either DAG execution (`@LoomGraph`) or upstream proxy (`@LoomProxy`) → response.
+**Request flow:** HTTP request → `LoomHandlerMapping` (route match) → interceptor chain → either DAG execution (`@LoomGraph`) or service proxy (`@LoomProxy`) → response.
 
 **DAG execution:** `DagCompiler` converts `@LoomGraph` annotations into a `Dag` object. `DagValidator` checks for cycles and detects the terminal node (the builder whose output type matches `@LoomApi.response()`). `DagExecutor` runs nodes on virtual threads via `Executors.newVirtualThreadPerTaskExecutor()`, firing dependent nodes as soon as their dependencies resolve.
 
 **Two API modes on the same annotation:**
 - `@LoomApi` + `@LoomGraph` = scatter-gather DAG
-- `@LoomApi` + `@LoomProxy` = passthrough proxy to upstream service
+- `@LoomApi` + `@LoomProxy` = passthrough proxy to external service
 
 **Dependency resolution in builders:** By output type (`ctx.getDependency(Type.class)`) when unique, or by builder class (`ctx.getResultOf(BuilderClass.class)`) when multiple builders produce the same type.
 
@@ -56,7 +56,7 @@ Four Maven modules with a strict dependency hierarchy:
 
 - Jetty handles each request on a virtual thread (`spring.threads.virtual.enabled: true`)
 - Each DAG node runs on its own virtual thread
-- Upstream calls use blocking `RestClient` (virtual thread unmounts during I/O)
+- Service calls use blocking `RestClient` (virtual thread unmounts during I/O)
 - **Never use `synchronized`** — use `ReentrantLock` instead to avoid carrier thread pinning
 
 ## Tech Stack
@@ -71,8 +71,8 @@ Four Maven modules with a strict dependency hierarchy:
 ## Configuration
 
 Loom-specific config lives under `loom:` prefix in application.yml. Key properties:
-- `loom.upstreams.<name>.base-url` — upstream service URL
-- `loom.upstreams.<name>.retry.*` — retry config (max-attempts, initial-delay-ms, multiplier, max-delay-ms)
+- `loom.services.<name>.base-url` — service URL
+- `loom.services.<name>.retry.*` — retry config (max-attempts, initial-delay-ms, multiplier, max-delay-ms)
 - `loom.swagger.enabled` — enable OpenAPI docs (default: true)
 - `loom.ui.enabled` — enable DAG visualization (default: true)
 - `loom.basePackages` — custom package scan paths

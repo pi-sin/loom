@@ -17,12 +17,12 @@ public record ApiDefinition(
     String[] tags,
     List<QueryParamDefinition> queryParams,
     List<HeaderParamDefinition> headerParams,
-    String upstreamName,
-    String upstreamPath,
+    String serviceName,
+    String servicePath,
     ValidationPlan validationPlan
 ) {
     public boolean isPassthrough() {
-        return upstreamName != null && upstreamPath != null;
+        return serviceName != null && servicePath != null;
     }
 
     public RouteDefinition toRoute() {

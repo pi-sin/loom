@@ -1,8 +1,8 @@
-package io.loom.starter.upstream;
+package io.loom.starter.service;
 
 import io.loom.core.engine.RetryExecutor;
-import io.loom.core.upstream.RetryConfig;
-import io.loom.core.upstream.UpstreamConfig;
+import io.loom.core.service.RetryConfig;
+import io.loom.core.service.ServiceConfig;
 import io.loom.starter.config.LoomProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -15,11 +15,11 @@ import org.springframework.context.annotation.Bean;
 public class LoomProxyAutoConfiguration {
 
     @Bean
-    public UpstreamClientRegistry upstreamClientRegistry(LoomProperties properties,
-                                                          RetryExecutor retryExecutor) {
-        UpstreamClientRegistry registry = new UpstreamClientRegistry();
+    public ServiceClientRegistry serviceClientRegistry(LoomProperties properties,
+                                                        RetryExecutor retryExecutor) {
+        ServiceClientRegistry registry = new ServiceClientRegistry();
 
-        properties.getUpstreams().forEach((name, props) -> {
+        properties.getServices().forEach((name, props) -> {
             RetryConfig retryConfig = new RetryConfig(
                     props.getRetry().getMaxAttempts(),
                     props.getRetry().getInitialDelayMs(),
@@ -27,7 +27,7 @@ public class LoomProxyAutoConfiguration {
                     props.getRetry().getMaxDelayMs()
             );
 
-            UpstreamConfig config = new UpstreamConfig(
+            ServiceConfig config = new ServiceConfig(
                     name,
                     props.getBaseUrl(),
                     props.getConnectTimeoutMs(),
@@ -35,11 +35,11 @@ public class LoomProxyAutoConfiguration {
                     retryConfig
             );
 
-            RestClientUpstreamClient client = new RestClientUpstreamClient(config, retryExecutor);
+            RestServiceClient client = new RestServiceClient(config, retryExecutor);
             registry.register(name, client);
         });
 
-        log.info("[Loom] Configured {} upstream clients", properties.getUpstreams().size());
+        log.info("[Loom] Configured {} service clients", properties.getServices().size());
         return registry;
     }
 }

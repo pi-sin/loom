@@ -3,7 +3,7 @@ package io.loom.starter.scanner;
 import io.loom.core.engine.DagCompiler;
 import io.loom.core.engine.DagExecutor;
 import io.loom.core.registry.ApiRegistry;
-import io.loom.starter.upstream.UpstreamClientRegistry;
+import io.loom.starter.service.ServiceClientRegistry;
 import io.loom.starter.web.LoomHandlerAdapter;
 import io.loom.starter.web.LoomHandlerMapping;
 import io.loom.starter.registry.InterceptorRegistry;
@@ -55,9 +55,9 @@ public class LoomInitializer implements SmartInitializingSingleton {
     @Bean
     public HandlerAdapter loomHandlerAdapter(DagExecutor dagExecutor,
                                               InterceptorRegistry interceptorRegistry,
-                                              UpstreamClientRegistry upstreamClientRegistry,
+                                              ServiceClientRegistry serviceClientRegistry,
                                               ObjectMapper objectMapper) {
         return new LoomHandlerAdapter(dagExecutor, interceptorRegistry,
-                upstreamClientRegistry, objectMapper);
+                serviceClientRegistry, objectMapper);
     }
 }

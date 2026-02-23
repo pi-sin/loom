@@ -15,7 +15,7 @@ public class LoomProperties {
 
     private boolean enabled = true;
 
-    private Map<String, UpstreamProperties> upstreams = new HashMap<>();
+    private Map<String, ServiceProperties> services = new HashMap<>();
 
     private UiProperties ui = new UiProperties();
 
@@ -24,7 +24,7 @@ public class LoomProperties {
     private List<String> basePackages = new ArrayList<>();
 
     @Data
-    public static class UpstreamProperties {
+    public static class ServiceProperties {
         private String baseUrl;
 
         private long connectTimeoutMs = 5000;

@@ -5,7 +5,7 @@ import io.loom.core.builder.LoomBuilder;
 import io.loom.core.exception.DependencyResolutionException;
 import io.loom.core.exception.LoomException;
 import io.loom.core.registry.BuilderFactory;
-import io.loom.core.upstream.UpstreamClient;
+import io.loom.core.service.ServiceClient;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
@@ -38,7 +38,7 @@ class DagExecutorTest {
         @Override public Map<String, List<String>> getQueryParams() { return Map.of(); }
         @Override public Map<String, List<String>> getHeaders() { return Map.of(); }
         @Override public byte[] getRawRequestBody() { return null; }
-        @Override public UpstreamClient upstream(String name) { return null; }
+        @Override public ServiceClient service(String name) { return null; }
         @Override public void setAttribute(String key, Object value) { attributes.put(key, value); }
         @Override @SuppressWarnings("unchecked")
         public <T> T getAttribute(String key, Class<T> type) { return (T) attributes.get(key); }

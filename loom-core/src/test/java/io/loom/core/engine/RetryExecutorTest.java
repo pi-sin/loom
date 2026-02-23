@@ -1,6 +1,6 @@
 package io.loom.core.engine;
 
-import io.loom.core.upstream.RetryConfig;
+import io.loom.core.service.RetryConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicInteger;

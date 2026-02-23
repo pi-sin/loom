@@ -17,7 +17,7 @@ public class DependencyResolutionException extends LoomException {
                                        List<String> completedBuilders) {
         return "No dependency found with output type: " + requestedType + ". " + "Available output types: "
                 + availableTypes + ". " + "Completed builders: " + completedBuilders + ". "
-                + "Possible causes: upstream builder failed, timed out, or dependency not declared in @LoomGraph.";
+                + "Possible causes: dependent builder failed, timed out, or dependency not declared in @LoomGraph.";
     }
 
     public DependencyResolutionException(String requestedType, List<String> availableTypes,

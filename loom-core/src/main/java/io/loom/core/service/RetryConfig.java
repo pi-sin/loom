@@ -1,4 +1,4 @@
-package io.loom.core.upstream;
+package io.loom.core.service;
 
 public record RetryConfig(
     int maxAttempts,
