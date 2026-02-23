@@ -1,3 +1,24 @@
+```
+╔══════════════════════════════════════════════════════════════════════╗
+║                                                                      ║
+║     ██╗      ██████╗  ██████╗ ███╗   ███╗                            ║
+║     ██║     ██╔═══██╗██╔═══██╗████╗ ████║                            ║
+║     ██║     ██║   ██║██║   ██║██╔████╔██║                            ║
+║     ██║     ██║   ██║██║   ██║██║╚██╔╝██║                            ║
+║     ███████╗╚██████╔╝╚██████╔╝██║ ╚═╝ ██║                            ║
+║     ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝     ╚═╝                            ║
+║                                                                      ║
+║        ─ ─ ═══╦══ ─ ─ ═══╦══ ─ ─ ═══╦══ ─ ─                          ║
+║               ║           ║           ║                              ║
+║     Scatter ──╬── Gather ─╬── Weave ──╬── Respond                    ║
+║               ║           ║           ║                              ║
+║        ─ ─ ═══╩══ ─ ─ ═══╩══ ─ ─ ═══╩══ ─ ─                          ║
+║                                                                      ║
+║     DAG Scatter-Gather ∙ Virtual Threads ∙ Spring Boot ∙ Java 21     ║
+║                                                                      ║
+╚══════════════════════════════════════════════════════════════════════╝
+```
+
 # Loom Framework
 
 **Java 21 API Gateway/BFF framework with DAG-based scatter-gather, powered by virtual threads.**
@@ -9,7 +30,8 @@ Loom executes it with maximum parallelism using virtual threads.
 ## Features
 
 - **Declarative DAG composition** — Define scatter-gather flows with annotations
-- **Zero-code passthrough** — Proxy upstream APIs with YAML config alone
+- **Unified passthrough** — Proxy upstream APIs with `@LoomApi` + `@LoomUpstream`, inheriting
+  interceptors, swagger schemas, and typed request/response for free
 - **Virtual thread execution** — Every request, every DAG node, every upstream call runs on a
   virtual thread
 - **Compile-time type safety** — Dependencies reference builder classes, not strings
@@ -83,8 +105,8 @@ everything.
 public class ProductDetailApi {}
 ```
 
-> **Note:** `@LoomApi` and `@LoomPassthrough` classes are auto-registered as Spring beans by the
-> starter — no `@Component` needed.
+> **Note:** `@LoomApi` classes are auto-registered as Spring beans by the starter — no `@Component`
+> needed.
 
 ### 3. Implement Builders
 
@@ -126,15 +148,31 @@ loom:
         initial-delay-ms: 100
 ```
 
-### 5. Add a Passthrough (Zero Code)
+### 5. Add a Passthrough API
 
-```yaml
-# loom.yml
-passthrough:
-  - path: /api/health
-    method: GET
-    upstream: health-service
-    upstream-path: /internal/health
+Passthrough APIs use `@LoomApi` + `@LoomUpstream` — they get interceptors, swagger schemas, and
+typed request/response for free:
+
+```java
+@LoomApi(method = "POST", path = "/api/orders",
+         request = CreateOrderRequest.class, response = OrderResponse.class,
+         interceptors = {ApiKeyInterceptor.class},
+         summary = "Create a new order", tags = {"Orders"},
+         headers = {@LoomHeaderParam(name = "X-API-Key", required = true, description = "API key")})
+@LoomUpstream(name = "order-service", path = "/internal/orders")
+public class CreateOrderApi {}
+```
+
+The upstream HTTP call inherits the method from `@LoomApi.method()`. Client request headers are
+forwarded (excluding `Host` and `Content-Length`), and the request body is forwarded as-is for
+POST/PUT/PATCH.
+
+For simple passthrough routes without typed schemas:
+
+```java
+@LoomApi(method = "GET", path = "/api/health", summary = "Health check", tags = {"Infrastructure"})
+@LoomUpstream(name = "health-service", path = "/internal/health")
+public class HealthCheckApi {}
 ```
 
 ## Architecture
@@ -146,21 +184,18 @@ HTTP Request (virtual thread via Jetty)
 LoomHandlerMapping (path template match)
   |
   v
-Interceptor chain (global + per-route)
+Interceptor chain (per-route, same for both modes)
   |
-  +--[Builder mode]----> DagExecutor
-  |                        |
-  |                        +-- Node A (virtual thread) --+
-  |                        +-- Node B (virtual thread) --+---> Terminal Node
-  |                        +-- Node C (virtual thread) --+     (auto-detected)
-  |                        |
-  |                        v
-  |                      Response DTO
+  +--[@LoomGraph]--------> DagExecutor
+  |                          |
+  |                          +-- Node A (virtual thread) --+
+  |                          +-- Node B (virtual thread) --+---> Terminal Node
+  |                          +-- Node C (virtual thread) --+     (auto-detected)
+  |                          |
+  |                          v
+  |                        Response DTO
   |
-  +--[Passthrough]-----> RestClient -> Upstream -> Response
-  |
-  v
-Interceptor chain (response phase)
+  +--[@LoomUpstream]-----> RestClient -> Upstream -> Response
   |
   v
 HTTP Response
@@ -189,7 +224,7 @@ dependencies resolve.
 | `@LoomApi`         | Class  | Route definition (method, path, request/response types, interceptors, docs) |
 | `@LoomGraph`       | Class  | DAG definition, placed on same class as `@LoomApi`                          |
 | `@Node`            | Nested | Individual DAG node (builder class, dependencies, required, timeout)        |
-| `@LoomPassthrough` | Class  | Annotation-based passthrough (alternative to YAML)                          |
+| `@LoomUpstream`    | Class  | Upstream target for passthrough APIs, placed on same class as `@LoomApi`    |
 | `@LoomQueryParam`  | Nested | Declares a query parameter (name, type, required, default, description)     |
 | `@LoomHeaderParam` | Nested | Declares a required/documented header (name, required, description)         |
 
@@ -222,7 +257,6 @@ dependencies resolve.
 
 ```yaml
 loom:
-  config-file: loom.yml            # YAML config file path
   upstreams:
     service-name:
       base-url: http://host:port
@@ -239,8 +273,9 @@ loom:
 
 ## Swagger / OpenAPI
 
-Loom auto-generates an OpenAPI spec from your `@LoomApi` and `@LoomPassthrough` annotations. Add the
-springdoc dependency to your app:
+Loom auto-generates an OpenAPI spec from your `@LoomApi` annotations — both builder and passthrough
+APIs get full swagger support (request/response schemas, parameters, tags). Add the springdoc
+dependency to your app:
 
 ```xml
 
@@ -276,15 +311,15 @@ Declare query parameters, headers, and documentation metadata directly on your A
          interceptors = {ApiKeyInterceptor.class})
 ```
 
-Passthrough routes also support documentation:
+Passthrough APIs use the same `@LoomApi` annotation, so they get full swagger support automatically:
 
 ```java
-@LoomPassthrough(method = "GET",
-                 path = "/api/health",
-                 upstream = "health-service",
-                 upstreamPath = "/internal/health",
-                 summary = "Health check",
-                 tags = {"Infrastructure"})
+@LoomApi(method = "POST", path = "/api/orders",
+         request = CreateOrderRequest.class, response = OrderResponse.class,
+         summary = "Create a new order", tags = {"Orders"},
+         headers = {@LoomHeaderParam(name = "X-API-Key", required = true, description = "API key")})
+@LoomUpstream(name = "order-service", path = "/internal/orders")
+public class CreateOrderApi {}
 ```
 
 ### Configuration
@@ -569,7 +604,10 @@ Then visit:
 
 - `GET http://localhost:8080/api/products/42` (with header `X-API-Key: demo-api-key-12345`)
 - `GET http://localhost:8080/api/users/123/dashboard`
+- `POST http://localhost:8080/api/orders` (with header `X-API-Key: demo-api-key-12345`) — passthrough
+- `GET http://localhost:8080/api/health` — passthrough
 - `GET http://localhost:8080/loom/ui` — DAG visualization
+- `GET http://localhost:8080/swagger-ui.html` — Swagger UI
 
 ## Requirements
 
