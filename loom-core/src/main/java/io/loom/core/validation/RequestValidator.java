@@ -1,6 +1,6 @@
 package io.loom.core.validation;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.loom.core.codec.JsonCodec;
 import io.loom.core.exception.LoomValidationException;
 import io.loom.core.interceptor.LoomHttpContext;
 import io.loom.core.model.HeaderParamDefinition;
@@ -121,7 +121,7 @@ public final class RequestValidator {
 
     public static ValidationResult validate(ValidationPlan plan,
                                             LoomHttpContext httpContext,
-                                            ObjectMapper objectMapper) {
+                                            JsonCodec jsonCodec) {
         if (!plan.needsValidation()) return null;
 
         Map<String, List<String>> violations = null;
@@ -178,7 +178,7 @@ public final class RequestValidator {
                                 + " " + httpContext.getRequestPath());
             } else {
                 try {
-                    parsedBody = objectMapper.readValue(rawBody, plan.requestBodyType);
+                    parsedBody = jsonCodec.readValue(rawBody, plan.requestBodyType);
                 } catch (Exception e) {
                     if (violations == null) violations = new LinkedHashMap<>();
                     violations.computeIfAbsent("body", k -> new ArrayList<>())

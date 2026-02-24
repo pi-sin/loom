@@ -7,7 +7,7 @@ import io.loom.starter.service.ServiceClientRegistry;
 import io.loom.starter.web.LoomHandlerAdapter;
 import io.loom.starter.web.LoomHandlerMapping;
 import io.loom.starter.registry.InterceptorRegistry;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.loom.core.codec.JsonCodec;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.context.ApplicationContext;
@@ -56,8 +56,8 @@ public class LoomInitializer implements SmartInitializingSingleton {
     public HandlerAdapter loomHandlerAdapter(DagExecutor dagExecutor,
                                               InterceptorRegistry interceptorRegistry,
                                               ServiceClientRegistry serviceClientRegistry,
-                                              ObjectMapper objectMapper) {
+                                              JsonCodec jsonCodec) {
         return new LoomHandlerAdapter(dagExecutor, interceptorRegistry,
-                serviceClientRegistry, objectMapper);
+                serviceClientRegistry, jsonCodec);
     }
 }

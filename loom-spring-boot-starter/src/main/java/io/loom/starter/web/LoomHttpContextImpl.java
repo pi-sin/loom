@@ -1,6 +1,6 @@
 package io.loom.starter.web;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.loom.core.codec.JsonCodec;
 import io.loom.core.exception.LoomException;
 import io.loom.core.interceptor.LoomHttpContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,7 +14,7 @@ public class LoomHttpContextImpl implements LoomHttpContext {
 
     private final HttpServletRequest request;
     private final HttpServletResponse response;
-    private final ObjectMapper objectMapper;
+    private final JsonCodec jsonCodec;
     private final Map<String, String> pathVariables;
     private final String requestId;
     private final byte[] rawBody;
@@ -29,11 +29,11 @@ public class LoomHttpContextImpl implements LoomHttpContext {
     private Object cachedParsedBody;
 
     public LoomHttpContextImpl(HttpServletRequest request, HttpServletResponse response,
-                               ObjectMapper objectMapper, Map<String, String> pathVariables,
+                               JsonCodec jsonCodec, Map<String, String> pathVariables,
                                String requestId) {
         this.request = request;
         this.response = response;
-        this.objectMapper = objectMapper;
+        this.jsonCodec = jsonCodec;
         this.pathVariables = pathVariables != null ? pathVariables : Map.of();
         this.requestId = requestId;
         this.rawBody = readBody(request);
@@ -130,7 +130,7 @@ public class LoomHttpContextImpl implements LoomHttpContext {
             return null;
         }
         try {
-            return objectMapper.readValue(rawBody, type);
+            return jsonCodec.readValue(rawBody, type);
         } catch (Exception e) {
             throw new LoomException("Failed to deserialize request body", e);
         }

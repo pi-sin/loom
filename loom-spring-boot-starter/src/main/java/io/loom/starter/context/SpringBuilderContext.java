@@ -2,6 +2,7 @@ package io.loom.starter.context;
 
 import io.loom.core.builder.BuilderContext;
 import io.loom.core.builder.LoomBuilder;
+import io.loom.core.codec.JsonCodec;
 import io.loom.core.exception.DependencyResolutionException;
 import io.loom.core.exception.LoomException;
 import io.loom.core.service.ServiceClient;
@@ -18,7 +19,7 @@ public class SpringBuilderContext implements BuilderContext {
     private final Map<String, List<String>> queryParams;
     private final Map<String, List<String>> headers;
     private final byte[] rawRequestBody;
-    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    private final JsonCodec jsonCodec;
     private final ServiceClientRegistry serviceRegistry;
     private final String requestId;
     private final Object cachedRequestBody;
@@ -36,7 +37,7 @@ public class SpringBuilderContext implements BuilderContext {
                                 Map<String, List<String>> queryParams,
                                 Map<String, List<String>> headers,
                                 byte[] rawRequestBody,
-                                com.fasterxml.jackson.databind.ObjectMapper objectMapper,
+                                JsonCodec jsonCodec,
                                 ServiceClientRegistry serviceRegistry,
                                 String requestId,
                                 Object cachedRequestBody) {
@@ -46,7 +47,7 @@ public class SpringBuilderContext implements BuilderContext {
         this.queryParams = queryParams != null ? queryParams : Map.of();
         this.headers = headers != null ? headers : Map.of();
         this.rawRequestBody = rawRequestBody;
-        this.objectMapper = objectMapper;
+        this.jsonCodec = jsonCodec;
         this.serviceRegistry = serviceRegistry;
         this.requestId = requestId;
         this.cachedRequestBody = cachedRequestBody;
@@ -65,7 +66,7 @@ public class SpringBuilderContext implements BuilderContext {
             return null;
         }
         try {
-            return objectMapper.readValue(rawRequestBody, type);
+            return jsonCodec.readValue(rawRequestBody, type);
         } catch (Exception e) {
             throw new LoomException("Failed to deserialize request body to " + type.getSimpleName(), e);
         }

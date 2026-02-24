@@ -30,7 +30,7 @@ cd loom-example && mvn spring-boot:run
 
 Four Maven modules with a strict dependency hierarchy:
 
-- **loom-core** — Pure Java, zero Spring dependencies. Contains annotations (`@LoomApi`, `@LoomGraph`, `@Node`, `@LoomProxy`), core interfaces (`LoomBuilder<O>`, `BuilderContext`, `LoomInterceptor`, `ServiceClient`), and the DAG engine (`DagCompiler`, `DagValidator`, `DagExecutor`).
+- **loom-core** — Pure Java, zero Spring dependencies. Contains annotations (`@LoomApi`, `@LoomGraph`, `@Node`, `@LoomProxy`), core interfaces (`LoomBuilder<O>`, `BuilderContext`, `LoomInterceptor`, `ServiceClient`), the DAG engine (`DagCompiler`, `DagValidator`, `DagExecutor`), and the `JsonCodec`/`DslJsonCodec` JSON abstraction.
 
 - **loom-spring-boot-starter** — Spring Boot auto-configuration layer. Wires core engine into Spring's HTTP dispatch via custom `LoomHandlerMapping` → `LoomHandlerAdapter` → `LoomRequestHandler`. Handles classpath scanning (`LoomAnnotationScanner`), service client management (`RestServiceClient`), and interceptor chains.
 
@@ -50,6 +50,8 @@ Four Maven modules with a strict dependency hierarchy:
 
 **Dependency resolution in builders:** By output type (`ctx.getDependency(Type.class)`) when unique, or by builder class (`ctx.getResultOf(BuilderClass.class)`) when multiple builders produce the same type.
 
+**JSON serialization:** All JSON reading/writing goes through the `JsonCodec` interface (`io.loom.core.codec`), implemented by `DslJsonCodec`. This covers both Loom's direct response writing and Spring `RestClient` service calls (via `DslJsonHttpMessageConverter`).
+
 **Interceptor → builder communication:** Interceptors set attributes via `ctx.setAttribute()`, builders read them via `ctx.getAttribute()`.
 
 ## Virtual Thread Conventions
@@ -64,7 +66,7 @@ Four Maven modules with a strict dependency hierarchy:
 - Java 21 (compiled with `-parameters` flag)
 - Spring Boot 3.4.3 with Jetty
 - Lombok (used in loom-core)
-- Jackson for JSON serialization
+- dsl-json for JSON serialization (via `JsonCodec` abstraction in `io.loom.core.codec`)
 - springdoc-openapi 2.8.6 for Swagger/OpenAPI
 - Testing: JUnit 5, AssertJ, Mockito
 
@@ -84,6 +86,7 @@ Tests exist in `loom-core` and `loom-spring-boot-starter`:
 - `loom-core/src/test/.../engine/DagCompilerTest.java` — annotation-to-DAG compilation
 - `loom-core/src/test/.../engine/DagValidatorTest.java` — cycle detection, terminal node detection
 - `loom-core/src/test/.../engine/RetryExecutorTest.java` — exponential backoff with jitter
+- `loom-core/src/test/.../codec/DslJsonCodecTest.java` — dsl-json codec round-trip tests
 - `loom-spring-boot-starter/src/test/.../web/PathMatcherTest.java` — URL path matching
 
 

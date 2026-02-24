@@ -1,5 +1,7 @@
 package io.loom.starter.config;
 
+import io.loom.core.codec.DslJsonCodec;
+import io.loom.core.codec.JsonCodec;
 import io.loom.core.engine.DagCompiler;
 import io.loom.core.engine.DagExecutor;
 import io.loom.core.engine.DagValidator;
@@ -25,6 +27,11 @@ import java.util.concurrent.Executors;
 @ConditionalOnProperty(prefix = "loom", name = "enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(LoomProperties.class)
 public class LoomAutoConfiguration {
+
+    @Bean
+    public JsonCodec jsonCodec() {
+        return new DslJsonCodec();
+    }
 
     @Bean
     public ExecutorService loomVirtualThreadExecutor() {
