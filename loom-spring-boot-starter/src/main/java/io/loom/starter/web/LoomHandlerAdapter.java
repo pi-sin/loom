@@ -1,6 +1,6 @@
 package io.loom.starter.web;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.loom.core.codec.JsonCodec;
 import io.loom.core.engine.DagExecutor;
 import io.loom.core.exception.LoomException;
 import io.loom.core.interceptor.LoomInterceptor;
@@ -26,16 +26,16 @@ public class LoomHandlerAdapter implements HandlerAdapter {
     private final DagExecutor dagExecutor;
     private final InterceptorRegistry interceptorRegistry;
     private final ServiceClientRegistry serviceClientRegistry;
-    private final ObjectMapper objectMapper;
+    private final JsonCodec jsonCodec;
 
     public LoomHandlerAdapter(DagExecutor dagExecutor,
                               InterceptorRegistry interceptorRegistry,
                               ServiceClientRegistry serviceClientRegistry,
-                              ObjectMapper objectMapper) {
+                              JsonCodec jsonCodec) {
         this.dagExecutor = dagExecutor;
         this.interceptorRegistry = interceptorRegistry;
         this.serviceClientRegistry = serviceClientRegistry;
-        this.objectMapper = objectMapper;
+        this.jsonCodec = jsonCodec;
     }
 
     @Override
@@ -50,7 +50,7 @@ public class LoomHandlerAdapter implements HandlerAdapter {
         String requestId = UUID.randomUUID().toString();
 
         LoomHttpContextImpl httpContext = new LoomHttpContextImpl(
-                request, response, objectMapper, pathVars, requestId);
+                request, response, jsonCodec, pathVars, requestId);
 
         ApiDefinition api = loomHandler.getApiDefinition();
 
@@ -58,7 +58,7 @@ public class LoomHandlerAdapter implements HandlerAdapter {
         Object cachedBody = null;
         if (api.validationPlan() != null) {
             RequestValidator.ValidationResult vr = RequestValidator.validate(
-                    api.validationPlan(), httpContext, objectMapper);
+                    api.validationPlan(), httpContext, jsonCodec);
             if (vr != null) {
                 if (vr.queryParamDefaults() != null) httpContext.applyQueryParamDefaults(vr.queryParamDefaults());
                 if (vr.parsedBody() != null) {
@@ -79,7 +79,7 @@ public class LoomHandlerAdapter implements HandlerAdapter {
 
         Object responseBody = httpContext.getResponseBody();
         if (responseBody != null) {
-            objectMapper.writeValue(response.getOutputStream(), responseBody);
+            jsonCodec.writeValue(response.getOutputStream(), responseBody);
         }
 
         return null;
@@ -101,7 +101,7 @@ public class LoomHandlerAdapter implements HandlerAdapter {
                     httpContext.getQueryParams(),
                     httpContext.getHeaders(),
                     httpContext.getRawRequestBody(),
-                    objectMapper,
+                    jsonCodec,
                     serviceClientRegistry,
                     requestId,
                     cachedBody

@@ -41,6 +41,8 @@ Loom executes it with maximum parallelism using virtual threads.
   free)
 - **Interceptor chains** — Request/response interceptors with attribute passing to builders
 - **Embedded DAG visualization** — Dark-themed UI at `/loom/ui` powered by D3.js + dagre-d3
+- **High-performance JSON** — dsl-json for fast, reflection-free serialization on both response
+  writing and service calls
 - **Built-in Swagger/OpenAPI** — Auto-generated API docs from `@LoomApi` annotations at
   `/swagger-ui.html`
 

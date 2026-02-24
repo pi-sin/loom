@@ -1,6 +1,7 @@
 package io.loom.core.validation;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.loom.core.codec.DslJsonCodec;
+import io.loom.core.codec.JsonCodec;
 import io.loom.core.exception.LoomValidationException;
 import io.loom.core.interceptor.LoomHttpContext;
 import io.loom.core.model.HeaderParamDefinition;
@@ -14,7 +15,7 @@ import static org.assertj.core.api.Assertions.*;
 
 class RequestValidatorTest {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JsonCodec jsonCodec = new DslJsonCodec();
 
     // ── compile: no-validation fast path ──────────────────────────────
 
@@ -33,7 +34,7 @@ class RequestValidatorTest {
     @Test
     void validateOnNonePlan_returnsNull() {
         ValidationPlan plan = ValidationPlan.NONE;
-        var result = RequestValidator.validate(plan, stubContext("GET", null, Map.of(), Map.of()), objectMapper);
+        var result = RequestValidator.validate(plan, stubContext("GET", null, Map.of(), Map.of()), jsonCodec);
         assertThat(result).isNull();
     }
 
@@ -49,7 +50,7 @@ class RequestValidatorTest {
         assertThat(plan.needsValidation()).isTrue();
 
         assertThatThrownBy(() -> RequestValidator.validate(plan,
-                        stubContext("GET", null, Map.of(), Map.of()), objectMapper))
+                        stubContext("GET", null, Map.of(), Map.of()), jsonCodec))
                 .isInstanceOf(LoomValidationException.class)
                 .satisfies(ex -> {
                     var violations = ((LoomValidationException) ex).getViolations();
@@ -65,7 +66,7 @@ class RequestValidatorTest {
                 void.class, "GET");
 
         assertThatThrownBy(() -> RequestValidator.validate(plan,
-                        stubContext("GET", null, Map.of(), Map.of("X-API-Key", "   ")), objectMapper))
+                        stubContext("GET", null, Map.of(), Map.of("X-API-Key", "   ")), jsonCodec))
                 .isInstanceOf(LoomValidationException.class);
     }
 
@@ -77,7 +78,7 @@ class RequestValidatorTest {
                 void.class, "GET");
 
         var result = RequestValidator.validate(plan,
-                stubContext("GET", null, Map.of(), Map.of("X-API-Key", "secret")), objectMapper);
+                stubContext("GET", null, Map.of(), Map.of("X-API-Key", "secret")), jsonCodec);
         assertThat(result).isNull();
     }
 
@@ -90,7 +91,7 @@ class RequestValidatorTest {
                 List.of(), void.class, "GET");
 
         assertThatThrownBy(() -> RequestValidator.validate(plan,
-                        stubContext("GET", null, Map.of(), Map.of()), objectMapper))
+                        stubContext("GET", null, Map.of(), Map.of()), jsonCodec))
                 .isInstanceOf(LoomValidationException.class)
                 .satisfies(ex -> {
                     var violations = ((LoomValidationException) ex).getViolations();
@@ -105,7 +106,7 @@ class RequestValidatorTest {
                 List.of(), void.class, "GET");
 
         var result = RequestValidator.validate(plan,
-                stubContext("GET", null, Map.of("page", "1"), Map.of()), objectMapper);
+                stubContext("GET", null, Map.of("page", "1"), Map.of()), jsonCodec);
         assertThat(result).isNull();
     }
 
@@ -118,7 +119,7 @@ class RequestValidatorTest {
                 List.of(), void.class, "GET");
 
         var result = RequestValidator.validate(plan,
-                stubContext("GET", null, Map.of("limit", "10"), Map.of()), objectMapper);
+                stubContext("GET", null, Map.of("limit", "10"), Map.of()), jsonCodec);
         // no exception = pass
         assertThat(result).isNull();
     }
@@ -130,7 +131,7 @@ class RequestValidatorTest {
                 List.of(), void.class, "GET");
 
         assertThatThrownBy(() -> RequestValidator.validate(plan,
-                        stubContext("GET", null, Map.of("limit", "abc"), Map.of()), objectMapper))
+                        stubContext("GET", null, Map.of("limit", "abc"), Map.of()), jsonCodec))
                 .isInstanceOf(LoomValidationException.class)
                 .satisfies(ex -> {
                     var violations = ((LoomValidationException) ex).getViolations();
@@ -146,7 +147,7 @@ class RequestValidatorTest {
                 List.of(), void.class, "GET");
 
         var result = RequestValidator.validate(plan,
-                stubContext("GET", null, Map.of("offset", "999999999999"), Map.of()), objectMapper);
+                stubContext("GET", null, Map.of("offset", "999999999999"), Map.of()), jsonCodec);
         assertThat(result).isNull();
     }
 
@@ -157,7 +158,7 @@ class RequestValidatorTest {
                 List.of(), void.class, "GET");
 
         assertThatThrownBy(() -> RequestValidator.validate(plan,
-                        stubContext("GET", null, Map.of("price", "notanumber"), Map.of()), objectMapper))
+                        stubContext("GET", null, Map.of("price", "notanumber"), Map.of()), jsonCodec))
                 .isInstanceOf(LoomValidationException.class);
     }
 
@@ -168,7 +169,7 @@ class RequestValidatorTest {
                 List.of(), void.class, "GET");
 
         var result = RequestValidator.validate(plan,
-                stubContext("GET", null, Map.of("ratio", "1.5"), Map.of()), objectMapper);
+                stubContext("GET", null, Map.of("ratio", "1.5"), Map.of()), jsonCodec);
         assertThat(result).isNull();
     }
 
@@ -180,17 +181,17 @@ class RequestValidatorTest {
 
         // "true" passes
         assertThatCode(() -> RequestValidator.validate(plan,
-                stubContext("GET", null, Map.of("active", "true"), Map.of()), objectMapper))
+                stubContext("GET", null, Map.of("active", "true"), Map.of()), jsonCodec))
                 .doesNotThrowAnyException();
 
         // "false" passes
         assertThatCode(() -> RequestValidator.validate(plan,
-                stubContext("GET", null, Map.of("active", "false"), Map.of()), objectMapper))
+                stubContext("GET", null, Map.of("active", "false"), Map.of()), jsonCodec))
                 .doesNotThrowAnyException();
 
         // "TRUE" passes (case-insensitive)
         assertThatCode(() -> RequestValidator.validate(plan,
-                stubContext("GET", null, Map.of("active", "TRUE"), Map.of()), objectMapper))
+                stubContext("GET", null, Map.of("active", "TRUE"), Map.of()), jsonCodec))
                 .doesNotThrowAnyException();
     }
 
@@ -201,7 +202,7 @@ class RequestValidatorTest {
                 List.of(), void.class, "GET");
 
         assertThatThrownBy(() -> RequestValidator.validate(plan,
-                        stubContext("GET", null, Map.of("active", "banana"), Map.of()), objectMapper))
+                        stubContext("GET", null, Map.of("active", "banana"), Map.of()), jsonCodec))
                 .isInstanceOf(LoomValidationException.class)
                 .satisfies(ex -> {
                     var violations = ((LoomValidationException) ex).getViolations();
@@ -225,7 +226,7 @@ class RequestValidatorTest {
                 List.of(), void.class, "GET");
 
         assertThatThrownBy(() -> RequestValidator.validate(plan,
-                        stubContext("GET", null, Map.of("count", "bad"), Map.of()), objectMapper))
+                        stubContext("GET", null, Map.of("count", "bad"), Map.of()), jsonCodec))
                 .isInstanceOf(LoomValidationException.class)
                 .satisfies(ex -> {
                     var violations = ((LoomValidationException) ex).getViolations();
@@ -247,7 +248,7 @@ class RequestValidatorTest {
                 void.class, "GET");
 
         assertThatThrownBy(() -> RequestValidator.validate(plan,
-                        stubContext("GET", null, Map.of(), Map.of()), objectMapper))
+                        stubContext("GET", null, Map.of(), Map.of()), jsonCodec))
                 .isInstanceOf(LoomValidationException.class)
                 .satisfies(ex -> {
                     var violations = ((LoomValidationException) ex).getViolations();
@@ -264,7 +265,7 @@ class RequestValidatorTest {
                 List.of(), void.class, "GET");
 
         var result = RequestValidator.validate(plan,
-                stubContext("GET", null, Map.of(), Map.of()), objectMapper);
+                stubContext("GET", null, Map.of(), Map.of()), jsonCodec);
         assertThat(result).isNotNull();
         assertThat(result.queryParamDefaults()).containsEntry("limit", "10");
     }
@@ -276,7 +277,7 @@ class RequestValidatorTest {
                 List.of(), void.class, "GET");
 
         var result = RequestValidator.validate(plan,
-                stubContext("GET", null, Map.of("limit", "50"), Map.of()), objectMapper);
+                stubContext("GET", null, Map.of("limit", "50"), Map.of()), jsonCodec);
         // defaults map should be null since param is present
         assertThat(result).isNull();
     }
@@ -303,7 +304,7 @@ class RequestValidatorTest {
         assertThat(plan.needsValidation()).isTrue();
 
         assertThatThrownBy(() -> RequestValidator.validate(plan,
-                        stubContext("POST", new byte[0], Map.of(), Map.of()), objectMapper))
+                        stubContext("POST", new byte[0], Map.of(), Map.of()), jsonCodec))
                 .isInstanceOf(LoomValidationException.class)
                 .satisfies(ex -> {
                     var violations = ((LoomValidationException) ex).getViolations();
@@ -317,7 +318,7 @@ class RequestValidatorTest {
                 List.of(), List.of(), TestBody.class, "POST");
 
         assertThatThrownBy(() -> RequestValidator.validate(plan,
-                        stubContext("POST", "{bad json".getBytes(), Map.of(), Map.of()), objectMapper))
+                        stubContext("POST", "{bad json".getBytes(), Map.of(), Map.of()), jsonCodec))
                 .isInstanceOf(LoomValidationException.class)
                 .satisfies(ex -> {
                     var violations = ((LoomValidationException) ex).getViolations();
@@ -331,11 +332,11 @@ class RequestValidatorTest {
                 List.of(), List.of(), TestBody.class, "POST");
 
         var result = RequestValidator.validate(plan,
-                stubContext("POST", "{\"name\":\"test\"}".getBytes(), Map.of(), Map.of()), objectMapper);
+                stubContext("POST", "{\"name\":\"test\"}".getBytes(), Map.of(), Map.of()), jsonCodec);
 
         assertThat(result).isNotNull();
         assertThat(result.parsedBody()).isInstanceOf(TestBody.class);
-        assertThat(((TestBody) result.parsedBody()).name).isEqualTo("test");
+        assertThat(((TestBody) result.parsedBody()).name()).isEqualTo("test");
     }
 
     @Test
@@ -346,7 +347,7 @@ class RequestValidatorTest {
         // GET with requestType should NOT trigger body validation
         assertThat(plan.needsBodyValidation).isFalse();
         var result = RequestValidator.validate(plan,
-                stubContext("GET", null, Map.of(), Map.of()), objectMapper);
+                stubContext("GET", null, Map.of(), Map.of()), jsonCodec);
         assertThat(result).isNull();
     }
 
@@ -384,15 +385,13 @@ class RequestValidatorTest {
 
         // no "limit" param at all — should be fine
         assertThatCode(() -> RequestValidator.validate(plan,
-                stubContext("GET", null, Map.of(), Map.of()), objectMapper))
+                stubContext("GET", null, Map.of(), Map.of()), jsonCodec))
                 .doesNotThrowAnyException();
     }
 
     // ── Test helper types ─────────────────────────────────────────────
 
-    public static class TestBody {
-        public String name;
-    }
+    public record TestBody(String name) {}
 
     // ── Stub LoomHttpContext ──────────────────────────────────────────
 

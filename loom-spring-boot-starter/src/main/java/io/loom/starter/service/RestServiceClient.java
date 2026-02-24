@@ -1,12 +1,16 @@
 package io.loom.starter.service;
 
+import io.loom.core.codec.JsonCodec;
 import io.loom.core.engine.RetryExecutor;
 import io.loom.core.exception.ServiceClientException;
 import io.loom.core.service.RetryConfig;
 import io.loom.core.service.ServiceClient;
 import io.loom.core.service.ServiceConfig;
+import io.loom.starter.codec.DslJsonHttpMessageConverter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.converter.ByteArrayHttpMessageConverter;
+import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
@@ -22,7 +26,7 @@ public class RestServiceClient implements ServiceClient {
     private final RetryExecutor retryExecutor;
     private final RetryConfig retryConfig;
 
-    public RestServiceClient(ServiceConfig config, RetryExecutor retryExecutor) {
+    public RestServiceClient(ServiceConfig config, RetryExecutor retryExecutor, JsonCodec jsonCodec) {
         this.name = config.name();
         this.retryExecutor = retryExecutor;
         this.retryConfig = config.retry();
@@ -36,6 +40,12 @@ public class RestServiceClient implements ServiceClient {
         this.restClient = RestClient.builder()
                 .baseUrl(config.baseUrl())
                 .requestFactory(requestFactory)
+                .messageConverters(converters -> {
+                    converters.clear();
+                    converters.add(new ByteArrayHttpMessageConverter());
+                    converters.add(new StringHttpMessageConverter());
+                    converters.add(new DslJsonHttpMessageConverter(jsonCodec));
+                })
                 .build();
         log.info("[Loom] Created service client '{}' -> {}", name, config.baseUrl());
     }
