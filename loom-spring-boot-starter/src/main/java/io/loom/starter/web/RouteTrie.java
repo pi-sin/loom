@@ -69,17 +69,27 @@ public class RouteTrie {
         return new RouteMatch(current.api, pathVariables);
     }
 
+    private static final String[] EMPTY = new String[0];
+
     static String[] splitPath(String path) {
-        if (path.startsWith("/")) {
-            path = path.substring(1);
+        int start = 0, end = path.length();
+        if (start < end && path.charAt(start) == '/') start++;
+        if (start < end && path.charAt(end - 1) == '/') end--;
+        if (start >= end) return EMPTY;
+
+        int count = 1;
+        for (int i = start; i < end; i++) {
+            if (path.charAt(i) == '/') count++;
         }
-        if (path.endsWith("/")) {
-            path = path.substring(0, path.length() - 1);
+        String[] segments = new String[count];
+        int idx = 0, segStart = start;
+        for (int i = start; i <= end; i++) {
+            if (i == end || path.charAt(i) == '/') {
+                segments[idx++] = path.substring(segStart, i);
+                segStart = i + 1;
+            }
         }
-        if (path.isEmpty()) {
-            return new String[0];
-        }
-        return path.split("/");
+        return segments;
     }
 
     public record RouteMatch(ApiDefinition api, Map<String, String> pathVariables) {}

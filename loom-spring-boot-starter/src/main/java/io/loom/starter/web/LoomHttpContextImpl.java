@@ -19,10 +19,13 @@ public class LoomHttpContextImpl implements LoomHttpContext {
     private final String requestId;
     private final byte[] rawBody;
 
+    private final Map<String, List<String>> cachedHeaders;
+
     private final ConcurrentHashMap<String, Object> attributes = new ConcurrentHashMap<>();
     private Object responseBody;
     private int responseStatus = 200;
     private Map<String, String> queryParamDefaults;
+    private Map<String, List<String>> cachedQueryParams;
     private Object cachedParsedBody;
 
     public LoomHttpContextImpl(HttpServletRequest request, HttpServletResponse response,
@@ -34,6 +37,17 @@ public class LoomHttpContextImpl implements LoomHttpContext {
         this.pathVariables = pathVariables != null ? pathVariables : Map.of();
         this.requestId = requestId;
         this.rawBody = readBody(request);
+        this.cachedHeaders = buildHeaders(request);
+    }
+
+    private static Map<String, List<String>> buildHeaders(HttpServletRequest request) {
+        Map<String, List<String>> headers = new LinkedHashMap<>();
+        Enumeration<String> names = request.getHeaderNames();
+        while (names.hasMoreElements()) {
+            String name = names.nextElement();
+            headers.put(name, Collections.list(request.getHeaders(name)));
+        }
+        return Collections.unmodifiableMap(headers);
     }
 
     private byte[] readBody(HttpServletRequest request) {
@@ -61,13 +75,7 @@ public class LoomHttpContextImpl implements LoomHttpContext {
 
     @Override
     public Map<String, List<String>> getHeaders() {
-        Map<String, List<String>> headers = new LinkedHashMap<>();
-        Enumeration<String> names = request.getHeaderNames();
-        while (names.hasMoreElements()) {
-            String name = names.nextElement();
-            headers.put(name, Collections.list(request.getHeaders(name)));
-        }
-        return headers;
+        return cachedHeaders;
     }
 
     @Override
@@ -81,12 +89,20 @@ public class LoomHttpContextImpl implements LoomHttpContext {
 
     @Override
     public Map<String, List<String>> getQueryParams() {
+        if (cachedQueryParams != null) {
+            return cachedQueryParams;
+        }
+        cachedQueryParams = buildQueryParams();
+        return cachedQueryParams;
+    }
+
+    private Map<String, List<String>> buildQueryParams() {
         Map<String, List<String>> params = new LinkedHashMap<>();
         request.getParameterMap().forEach((k, v) -> params.put(k, Arrays.asList(v)));
         if (queryParamDefaults != null) {
             queryParamDefaults.forEach((k, v) -> params.putIfAbsent(k, List.of(v)));
         }
-        return params;
+        return Collections.unmodifiableMap(params);
     }
 
     @Override
@@ -122,6 +138,7 @@ public class LoomHttpContextImpl implements LoomHttpContext {
 
     void applyQueryParamDefaults(Map<String, String> defaults) {
         this.queryParamDefaults = defaults;
+        this.cachedQueryParams = null; // invalidate cache
     }
 
     void cacheParsedBody(Object body) {

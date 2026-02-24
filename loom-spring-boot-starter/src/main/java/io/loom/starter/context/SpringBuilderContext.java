@@ -23,6 +23,10 @@ public class SpringBuilderContext implements BuilderContext {
     private final String requestId;
     private final Object cachedRequestBody;
 
+    private final Map<String, String> unmodPathVars;
+    private final Map<String, List<String>> unmodQueryParams;
+    private final Map<String, List<String>> unmodHeaders;
+
     private final ConcurrentHashMap<String, Object> attributes = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Class<?>, Object> resultsByType = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Class<? extends LoomBuilder<?>>, Object> resultsByBuilder = new ConcurrentHashMap<>();
@@ -46,6 +50,9 @@ public class SpringBuilderContext implements BuilderContext {
         this.serviceRegistry = serviceRegistry;
         this.requestId = requestId;
         this.cachedRequestBody = cachedRequestBody;
+        this.unmodPathVars = Collections.unmodifiableMap(this.pathVariables);
+        this.unmodQueryParams = Collections.unmodifiableMap(this.queryParams);
+        this.unmodHeaders = Collections.unmodifiableMap(this.headers);
     }
 
     @Override
@@ -93,17 +100,17 @@ public class SpringBuilderContext implements BuilderContext {
 
     @Override
     public Map<String, String> getPathVariables() {
-        return Collections.unmodifiableMap(pathVariables);
+        return unmodPathVars;
     }
 
     @Override
     public Map<String, List<String>> getQueryParams() {
-        return Collections.unmodifiableMap(queryParams);
+        return unmodQueryParams;
     }
 
     @Override
     public Map<String, List<String>> getHeaders() {
-        return Collections.unmodifiableMap(headers);
+        return unmodHeaders;
     }
 
     @Override

@@ -28,7 +28,9 @@ public class DagExecutor {
     }
 
     public Object execute(Dag dag, BuilderContext context) {
-        ConcurrentHashMap<Class<? extends LoomBuilder<?>>, CompletableFuture<BuilderResult<?>>> futures = new ConcurrentHashMap<>();
+        int nodeCount = dag.topologicalOrder().size();
+        ConcurrentHashMap<Class<? extends LoomBuilder<?>>, CompletableFuture<BuilderResult<?>>> futures =
+                new ConcurrentHashMap<>(nodeCount * 4 / 3 + 1, 0.75f, 1);
 
         for (DagNode node : dag.topologicalOrder()) {
             CompletableFuture<BuilderResult<?>> future;
@@ -88,8 +90,9 @@ public class DagExecutor {
     }
 
     private BuilderResult<?> executeNode(DagNode node, BuilderContext context) {
-        String threadName = Thread.currentThread().toString();
-        log.debug("[Loom] Executing node '{}' on virtual thread {}", node.name(), threadName);
+        if (log.isDebugEnabled()) {
+            log.debug("[Loom] Executing node '{}' on virtual thread {}", node.name(), Thread.currentThread());
+        }
 
         try {
             LoomBuilder<?> builder = builderFactory.createBuilderUntyped(node.builderClass());

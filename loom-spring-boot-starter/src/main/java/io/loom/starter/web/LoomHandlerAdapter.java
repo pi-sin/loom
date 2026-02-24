@@ -18,6 +18,7 @@ import org.springframework.web.servlet.HandlerAdapter;
 import org.springframework.web.servlet.ModelAndView;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 public class LoomHandlerAdapter implements HandlerAdapter {
@@ -90,7 +91,7 @@ public class LoomHandlerAdapter implements HandlerAdapter {
         // Build interceptor chain
         List<LoomInterceptor> interceptors = interceptorRegistry.getInterceptors(api.interceptors());
 
-        final Object[] result = new Object[1];
+        var resultHolder = new AtomicReference<>();
 
         Runnable dagExecution = () -> {
             SpringBuilderContext builderContext = new SpringBuilderContext(
@@ -110,7 +111,7 @@ public class LoomHandlerAdapter implements HandlerAdapter {
             httpContext.getAttributes().forEach(builderContext::setAttribute);
 
             try {
-                result[0] = dagExecutor.execute(api.dag(), builderContext);
+                resultHolder.set(dagExecutor.execute(api.dag(), builderContext));
             } catch (LoomException ex) {
                 throw (LoomException) ex.withRequestId(requestId)
                         .withApiRoute(api.method() + " " + api.path());
@@ -120,7 +121,7 @@ public class LoomHandlerAdapter implements HandlerAdapter {
         DefaultInterceptorChain chain = new DefaultInterceptorChain(interceptors, dagExecution);
         chain.next(httpContext);
 
-        httpContext.setResponseBody(result[0]);
+        httpContext.setResponseBody(resultHolder.get());
     }
 
     private void handlePassthrough(ApiDefinition api, LoomHttpContextImpl httpContext) {
