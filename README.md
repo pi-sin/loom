@@ -12,9 +12,9 @@
 ║               ║           ║           ║                              ║
 ║     Scatter ──╬── Gather ─╬── Weave ──╬── Respond                    ║
 ║               ║           ║           ║                              ║
-║        ─ ─ ═══╩══ ─ ─ ═══╩══ ─ ─ ═══╩══ ─ ─                          ║
+║        ─ ─ ═══╩══  ─ ─ ═══╩══  ─ ─ ═══╩══ ─ ─                        ║
 ║                                                                      ║
-║     DAG Scatter-Gather ∙ Virtual Threads ∙ Spring Boot ∙ Java 21     ║
+║     DAG Scatter-Gather ∙ Virtual Threads ∙ Spring Boot ∙ Java 21+    ║
 ║                                                                      ║
 ╚══════════════════════════════════════════════════════════════════════╝
 ```
@@ -88,6 +88,26 @@ everything.
 <version>0.1.0-SNAPSHOT</version>
 </dependency>
 ```
+
+> **Server choice:** The starter is server-agnostic — Spring Boot defaults to Tomcat.
+> To use Jetty instead (recommended for virtual threads on older Spring Boot versions):
+>
+> ```xml
+> <dependency>
+>   <groupId>org.springframework.boot</groupId>
+>   <artifactId>spring-boot-starter-web</artifactId>
+>   <exclusions>
+>     <exclusion>
+>       <groupId>org.springframework.boot</groupId>
+>       <artifactId>spring-boot-starter-tomcat</artifactId>
+>     </exclusion>
+>   </exclusions>
+> </dependency>
+> <dependency>
+>   <groupId>org.springframework.boot</groupId>
+>   <artifactId>spring-boot-starter-jetty</artifactId>
+> </dependency>
+> ```
 
 ### 2. Define a DAG API
 
@@ -214,7 +234,7 @@ Then visit `http://localhost:8080/loom/ui`.
 ## Architecture
 
 ```
-HTTP Request (virtual thread via Jetty)
+HTTP Request (virtual thread)
   |
   v
 LoomHandlerMapping (path template match)
@@ -602,7 +622,7 @@ with exponential backoff is automatic based on service configuration.
 
 Loom uses virtual threads at every layer:
 
-1. **HTTP handling** — Jetty spawns virtual threads for each request (
+1. **HTTP handling** — Embedded server spawns virtual threads for each request (
    `spring.threads.virtual.enabled: true`)
 2. **DAG execution** — Each builder node runs on its own virtual thread via
    `Executors.newVirtualThreadPerTaskExecutor()`
@@ -649,7 +669,6 @@ Then visit:
 
 - Java 21+
 - Spring Boot 3.4+
-- Jetty (included via starter)
 
 ## License
 
