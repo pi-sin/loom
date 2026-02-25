@@ -114,13 +114,12 @@ everything.
 ```java
 
 @LoomApi(method = "GET", path = "/api/products/{id}", response = ProductDetailResponse.class)
-@LoomGraph({@Node(builder = FetchProductBuilder.class, timeoutMs = 3000),
+@LoomGraph({
+        @Node(builder = FetchProductBuilder.class, timeoutMs = 3000),
         @Node(builder = FetchPricingBuilder.class, dependsOn = FetchProductBuilder.class),
-        @Node(builder = FetchReviewsBuilder.class, required = false, timeoutMs = 2000), @Node(
-        builder = FetchRecommendationsBuilder.class,
-        required = false,
-        timeoutMs = 2000,
-        dependsOn = {FetchProductBuilder.class, FetchPricingBuilder.class}),
+        @Node(builder = FetchReviewsBuilder.class, required = false, timeoutMs = 2000),
+        @Node(builder = FetchRecommendationsBuilder.class, required = false, timeoutMs = 2000,
+              dependsOn = {FetchProductBuilder.class, FetchPricingBuilder.class}),
         @Node(builder = AssembleProductBuilder.class,
               dependsOn = {FetchProductBuilder.class, FetchPricingBuilder.class,
                       FetchReviewsBuilder.class, FetchRecommendationsBuilder.class})})
