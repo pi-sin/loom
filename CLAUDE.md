@@ -52,6 +52,8 @@ Four Maven modules with a strict dependency hierarchy:
 
 **JSON serialization:** All JSON reading/writing goes through the `JsonCodec` interface (`io.loom.core.codec`), implemented by `DslJsonCodec`. This covers both Loom's direct response writing and Spring `RestClient` service calls (via `DslJsonHttpMessageConverter`).
 
+**Proxy forwarding:** Path variables are resolved in `@LoomProxy.path()` via pre-compiled `ProxyPathTemplate` (zero per-request scanning). Query string is forwarded raw from the servlet request. Headers are forwarded (minus `Host`/`Content-Length`). Request body is forwarded as raw bytes for POST/PUT/PATCH.
+
 **Interceptor → builder communication:** Interceptors set attributes via `ctx.setAttribute()`, builders read them via `ctx.getAttribute()`.
 
 ## Virtual Thread Conventions

@@ -7,6 +7,7 @@ import io.loom.core.engine.Dag;
 import io.loom.core.engine.DagCompiler;
 import io.loom.core.model.ApiDefinition;
 import io.loom.core.model.HeaderParamDefinition;
+import io.loom.core.model.ProxyPathTemplate;
 import io.loom.core.model.QueryParamDefinition;
 import io.loom.core.registry.ApiRegistry;
 import io.loom.core.validation.RequestValidator;
@@ -78,6 +79,7 @@ public class LoomAnnotationScanner {
                         headerParams,
                         null,
                         null,
+                        null,
                         validationPlan
                 );
                 apiRegistry.registerApi(definition);
@@ -86,6 +88,7 @@ public class LoomAnnotationScanner {
             } else if (service != null) {
                 ValidationPlan validationPlan = RequestValidator.compile(
                         queryParams, headerParams, api.request(), api.method());
+                ProxyPathTemplate template = ProxyPathTemplate.compile(service.path());
 
                 ApiDefinition definition = new ApiDefinition(
                         api.method(),
@@ -101,6 +104,7 @@ public class LoomAnnotationScanner {
                         headerParams,
                         service.name(),
                         service.path(),
+                        template,
                         validationPlan
                 );
                 apiRegistry.registerApi(definition);

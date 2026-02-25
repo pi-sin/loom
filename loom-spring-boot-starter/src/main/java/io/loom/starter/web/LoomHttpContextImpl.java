@@ -116,6 +116,11 @@ public class LoomHttpContextImpl implements LoomHttpContext {
     }
 
     @Override
+    public String getQueryString() {
+        return request.getQueryString();
+    }
+
+    @Override
     public byte[] getRawRequestBody() {
         return rawBody;
     }
