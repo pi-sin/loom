@@ -56,7 +56,7 @@ Four Maven modules with a strict dependency hierarchy:
 
 ## Virtual Thread Conventions
 
-- Jetty handles each request on a virtual thread (`spring.threads.virtual.enabled: true`)
+- Embedded server handles each request on a virtual thread (`spring.threads.virtual.enabled: true`)
 - Each DAG node runs on its own virtual thread
 - Service calls use blocking `RestClient` (virtual thread unmounts during I/O)
 - **Never use `synchronized`** — use `ReentrantLock` instead to avoid carrier thread pinning
@@ -64,7 +64,7 @@ Four Maven modules with a strict dependency hierarchy:
 ## Tech Stack
 
 - Java 21 (compiled with `-parameters` flag)
-- Spring Boot 3.4.3 with Jetty
+- Spring Boot 3.4+ (version provided by consumer's project; starter is server-agnostic)
 - Lombok (used in loom-core)
 - dsl-json for JSON serialization (via `JsonCodec` abstraction in `io.loom.core.codec`)
 - springdoc-openapi 2.8.6 for Swagger/OpenAPI
