@@ -184,9 +184,25 @@ typed request/response for free:
 public class CreateOrderApi {}
 ```
 
-The service HTTP call inherits the method from `@LoomApi.method()`. Client request headers are
-forwarded (excluding `Host` and `Content-Length`), and the request body is forwarded as-is for
-POST/PUT/PATCH.
+The service HTTP call inherits the method from `@LoomApi.method()`. **Path variables** are resolved
+in the proxy path (e.g., `{orderId}` becomes the actual value). **Query parameters** are forwarded
+automatically. Client request headers are forwarded (excluding `Host` and `Content-Length`), and the
+request body is forwarded as-is for POST/PUT/PATCH.
+
+Passthrough APIs automatically forward **path parameters** and **query parameters** to the downstream
+service:
+
+```java
+@LoomApi(method = "GET", path = "/api/orders/{orderId}",
+         response = OrderResponse.class,
+         interceptors = {ApiKeyInterceptor.class},
+         headers = {@LoomHeaderParam(name = "X-API-Key", required = true, description = "API key")})
+@LoomProxy(name = "order-service", path = "/internal/orders/{orderId}")
+public class GetOrderApi {}
+```
+
+A request to `GET /api/orders/42?expand=items` forwards to `order-service` at
+`/internal/orders/42?expand=items`.
 
 For simple passthrough routes without typed schemas:
 
@@ -660,6 +676,7 @@ Then visit:
 - `GET http://localhost:8080/api/products/42` (with header `X-API-Key: demo-api-key-12345`)
 - `GET http://localhost:8080/api/users/123/dashboard`
 - `POST http://localhost:8080/api/orders` (with header `X-API-Key: demo-api-key-12345`) — passthrough
+- `GET http://localhost:8080/api/orders/42?expand=items` (with header `X-API-Key: demo-api-key-12345`) — passthrough with path params + query params
 - `GET http://localhost:8080/api/health` — passthrough
 - `GET http://localhost:8080/loom/ui` — DAG visualization
 - `GET http://localhost:8080/swagger-ui.html` — Swagger UI

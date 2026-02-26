@@ -415,6 +415,7 @@ class RequestValidatorTest {
             }
             @Override public String getPathVariable(String name) { return null; }
             @Override public Map<String, String> getPathVariables() { return Map.of(); }
+            @Override public String getQueryString() { return null; }
             @Override public byte[] getRawRequestBody() { return body; }
             @Override public <T> T getRequestBody(Class<T> type) { return null; }
             @Override public void setAttribute(String key, Object value) {}

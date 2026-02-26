@@ -19,6 +19,7 @@ public record ApiDefinition(
     List<HeaderParamDefinition> headerParams,
     String serviceName,
     String servicePath,
+    ProxyPathTemplate servicePathTemplate,
     ValidationPlan validationPlan
 ) {
     public boolean isPassthrough() {

@@ -52,6 +52,8 @@ Four Maven modules with a strict dependency hierarchy:
 
 **JSON serialization:** All JSON reading/writing goes through the `JsonCodec` interface (`io.loom.core.codec`), implemented by `DslJsonCodec`. This covers both Loom's direct response writing and Spring `RestClient` service calls (via `DslJsonHttpMessageConverter`).
 
+**Proxy forwarding:** Path variables are resolved in `@LoomProxy.path()` via pre-compiled `ProxyPathTemplate` (zero per-request scanning). Query string is forwarded raw from the servlet request. Headers are forwarded (minus `Host`/`Content-Length`). Request body is forwarded as raw bytes for POST/PUT/PATCH.
+
 **Interceptor → builder communication:** Interceptors set attributes via `ctx.setAttribute()`, builders read them via `ctx.getAttribute()`.
 
 ## Virtual Thread Conventions
@@ -89,41 +91,42 @@ Tests exist in `loom-core` and `loom-spring-boot-starter`:
 - `loom-core/src/test/.../codec/DslJsonCodecTest.java` — dsl-json codec round-trip tests
 - `loom-spring-boot-starter/src/test/.../web/PathMatcherTest.java` — URL path matching
 
+## Code Standards
 
-## Core Requirements
+### General Principles
 
-- The architecture should be simple and easy to understand
-- The architecture should be scalable to high concurrency and throughput (1M req/sec) and maintainable
-- The architecture should be easy to test
-- The architecture should be easy to extend
-- The architecture should be easy to debug
-- The architecture should be easy to document
-- The architecture should be easy to deploy
-- The architecture should be easy to monitor
-- The architecture should be easy to secure
-- The architecture should be easy to scale
-- The architecture should be easy to maintain
-- The architecture should be easy to refactor
-- The architecture should be easy to understand
-- The architecture should be easy to learn
-- The architecture should be easy to teach
-- The architecture should be easy to follow
-- The architecture should be easy to remember
-- The architecture should be easy to implement
-- The architecture should be easy to deploy
-- The architecture should be easy to maintain
-- The architecture should be easy to extend
-- The architecture should be easy to test
-- The architecture should be easy to debug
-- The architecture should be easy to document
-- The architecture should be easy to monitor
-- The architecture should be easy to secure
-- The architecture should be easy to scale
-- The architecture should be easy to maintain
-- The architecture should be easy to refactor
-- The architecture should be easy to understand
-- The architecture should be easy to learn
-- The architecture should be easy to teach
-- The architecture should be easy to follow
-- The architecture should be easy to remember
-- The architecture should be easy to implement
+- This is production grade framework meant for public distribution - maintain high quality
+- This framework is meant to handle at least 100K+ requests per instance, so performance and scalability are critical. Any design should consider this.
+- Follow SOLID principles
+- Write clean, maintainable, and well-documented code
+- Use meaningful variable and method names
+- Keep methods short and focused on a single responsibility
+- Avoid code duplication
+- Use defensive programming practices
+- Write appropriate unit tests
+- Document complex algorithms and business logic
+- Follow Java coding conventions
+- Use proper error handling and logging
+- Use proper exception handling and logging
+- Use proper resource management
+- The framework should be easy to implement and should be extensible
+
+### Code Comments
+
+- Only add comments that provide real value beyond what the code already expresses. 
+- Avoid obvious comments like `// increment i` or `// return result`. 
+- Focus on explaining the "why" behind non-obvious logic, business rules, or complex algorithms.
+
+Examples:
+
+
+```java
+// Good: Explains WHY and provides context
+// Use a 30-second timeout because Snowflake's query API can hang indefinitely
+// on large result sets. See issue #12345.
+Integer connection_timeout = 30;
+
+// Bad: Restates what's obvious from code
+// Set connection timeout to 30 seconds
+Integer connection_timeout = 30;
+```

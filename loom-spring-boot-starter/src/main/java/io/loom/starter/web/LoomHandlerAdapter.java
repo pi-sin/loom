@@ -137,13 +137,16 @@ public class LoomHandlerAdapter implements HandlerAdapter {
                 }
             });
 
+            String resolvedPath = api.servicePathTemplate().resolve(
+                    httpContext.getPathVariablesRaw(), httpContext.getQueryString());
+
             String method = httpContext.getHttpMethod().toUpperCase();
             Object result = switch (method) {
-                case "GET" -> client.get(api.servicePath(), Object.class, headers);
-                case "POST" -> client.post(api.servicePath(), httpContext.getRawRequestBody(), Object.class, headers);
-                case "PUT" -> client.put(api.servicePath(), httpContext.getRawRequestBody(), Object.class, headers);
-                case "DELETE" -> client.delete(api.servicePath(), Object.class, headers);
-                case "PATCH" -> client.patch(api.servicePath(), httpContext.getRawRequestBody(), Object.class, headers);
+                case "GET" -> client.get(resolvedPath, Object.class, headers);
+                case "POST" -> client.post(resolvedPath, httpContext.getRawRequestBody(), Object.class, headers);
+                case "PUT" -> client.put(resolvedPath, httpContext.getRawRequestBody(), Object.class, headers);
+                case "DELETE" -> client.delete(resolvedPath, Object.class, headers);
+                case "PATCH" -> client.patch(resolvedPath, httpContext.getRawRequestBody(), Object.class, headers);
                 default -> throw new UnsupportedOperationException("Unsupported method: " + method);
             };
 

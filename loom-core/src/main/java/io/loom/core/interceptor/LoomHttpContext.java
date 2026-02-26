@@ -12,6 +12,7 @@ public interface LoomHttpContext {
     Map<String, List<String>> getQueryParams();
     String getPathVariable(String name);
     Map<String, String> getPathVariables();
+    String getQueryString();
     byte[] getRawRequestBody();
     <T> T getRequestBody(Class<T> type);
 
