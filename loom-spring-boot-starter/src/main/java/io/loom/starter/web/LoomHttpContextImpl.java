@@ -115,6 +115,10 @@ public class LoomHttpContextImpl implements LoomHttpContext {
         return Collections.unmodifiableMap(pathVariables);
     }
 
+    Map<String, String> getPathVariablesRaw() {
+        return pathVariables;
+    }
+
     @Override
     public String getQueryString() {
         return request.getQueryString();

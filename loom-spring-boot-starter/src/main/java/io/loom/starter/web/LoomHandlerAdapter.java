@@ -137,11 +137,8 @@ public class LoomHandlerAdapter implements HandlerAdapter {
                 }
             });
 
-            String resolvedPath = api.servicePathTemplate().resolve(httpContext.getPathVariables());
-            String queryString = httpContext.getQueryString();
-            if (queryString != null) {
-                resolvedPath = resolvedPath + '?' + queryString;
-            }
+            String resolvedPath = api.servicePathTemplate().resolve(
+                    httpContext.getPathVariablesRaw(), httpContext.getQueryString());
 
             String method = httpContext.getHttpMethod().toUpperCase();
             Object result = switch (method) {

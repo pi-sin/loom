@@ -79,4 +79,33 @@ class ProxyPathTemplateTest {
         assertThat(t.resolve(Map.of("a", "foo", "b", "bar")))
                 .isEqualTo("/foobar");
     }
+
+    @Test
+    void resolveWithQueryString() {
+        ProxyPathTemplate t = ProxyPathTemplate.compile("/orders/{id}");
+        assertThat(t.resolve(Map.of("id", "42"), "status=pending&expand=items"))
+                .isEqualTo("/orders/42?status=pending&expand=items");
+    }
+
+    @Test
+    void resolveWithNullQueryString() {
+        ProxyPathTemplate t = ProxyPathTemplate.compile("/orders/{id}");
+        assertThat(t.resolve(Map.of("id", "42"), null))
+                .isEqualTo("/orders/42");
+    }
+
+    @Test
+    void staticPathWithQueryString() {
+        ProxyPathTemplate t = ProxyPathTemplate.compile("/orders");
+        assertThat(t.resolve(Map.of(), "page=1"))
+                .isEqualTo("/orders?page=1");
+    }
+
+    @Test
+    void staticPathWithNullQueryStringReturnsSameInstance() {
+        ProxyPathTemplate t = ProxyPathTemplate.compile("/orders");
+        String first = t.resolve(Map.of(), null);
+        String second = t.resolve(Map.of(), null);
+        assertThat(first).isSameAs(second);
+    }
 }
