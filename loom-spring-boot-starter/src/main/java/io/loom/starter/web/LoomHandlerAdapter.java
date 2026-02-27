@@ -20,22 +20,34 @@ import org.springframework.web.servlet.ModelAndView;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static java.util.Locale.ROOT;
+
 @Slf4j
 public class LoomHandlerAdapter implements HandlerAdapter {
+
+    // RFC 2616 §13.5.1 — hop-by-hop headers that proxies MUST NOT forward
+    private static final Set<String> HOP_BY_HOP_HEADERS = Set.of(
+            "host", "content-length", "connection", "keep-alive",
+            "transfer-encoding", "te", "trailer", "upgrade",
+            "proxy-authenticate", "proxy-authorization"
+    );
 
     private final DagExecutor dagExecutor;
     private final InterceptorRegistry interceptorRegistry;
     private final ServiceClientRegistry serviceClientRegistry;
     private final JsonCodec jsonCodec;
+    private final long maxRequestBodySize;
 
     public LoomHandlerAdapter(DagExecutor dagExecutor,
                               InterceptorRegistry interceptorRegistry,
                               ServiceClientRegistry serviceClientRegistry,
-                              JsonCodec jsonCodec) {
+                              JsonCodec jsonCodec,
+                              long maxRequestBodySize) {
         this.dagExecutor = dagExecutor;
         this.interceptorRegistry = interceptorRegistry;
         this.serviceClientRegistry = serviceClientRegistry;
         this.jsonCodec = jsonCodec;
+        this.maxRequestBodySize = maxRequestBodySize;
     }
 
     @Override
@@ -47,10 +59,9 @@ public class LoomHandlerAdapter implements HandlerAdapter {
     public ModelAndView handle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         LoomRequestHandler loomHandler = (LoomRequestHandler) handler;
         Map<String, String> pathVars = loomHandler.getPathVariables();
-        String requestId = UUID.randomUUID().toString();
 
         LoomHttpContextImpl httpContext = new LoomHttpContextImpl(
-                request, response, jsonCodec, pathVars, requestId);
+                request, response, jsonCodec, pathVars, maxRequestBodySize);
 
         ApiDefinition api = loomHandler.getApiDefinition();
 
@@ -71,7 +82,7 @@ public class LoomHandlerAdapter implements HandlerAdapter {
         if (api.isPassthrough()) {
             handlePassthrough(api, httpContext);
         } else {
-            handleBuilder(api, httpContext, pathVars, requestId, cachedBody);
+            handleBuilder(api, httpContext, pathVars, cachedBody);
         }
 
         response.setStatus(httpContext.getResponseStatus());
@@ -86,7 +97,7 @@ public class LoomHandlerAdapter implements HandlerAdapter {
     }
 
     private void handleBuilder(ApiDefinition api, LoomHttpContextImpl httpContext,
-                               Map<String, String> pathVars, String requestId,
+                               Map<String, String> pathVars,
                                Object cachedBody) {
         // Build interceptor chain
         List<LoomInterceptor> interceptors = interceptorRegistry.getInterceptors(api.interceptors());
@@ -103,7 +114,6 @@ public class LoomHandlerAdapter implements HandlerAdapter {
                     httpContext.getRawRequestBody(),
                     jsonCodec,
                     serviceClientRegistry,
-                    requestId,
                     cachedBody
             );
 
@@ -113,7 +123,9 @@ public class LoomHandlerAdapter implements HandlerAdapter {
             try {
                 resultHolder.set(dagExecutor.execute(api.dag(), builderContext));
             } catch (LoomException ex) {
-                throw (LoomException) ex.withRequestId(requestId)
+                throw (LoomException) ex.withApiRoute(api.method() + " " + api.path());
+            } catch (Exception ex) {
+                throw (LoomException) new LoomException("Builder execution failed", ex)
                         .withApiRoute(api.method() + " " + api.path());
             }
         };
@@ -121,36 +133,46 @@ public class LoomHandlerAdapter implements HandlerAdapter {
         DefaultInterceptorChain chain = new DefaultInterceptorChain(interceptors, dagExecution);
         chain.next(httpContext);
 
-        httpContext.setResponseBody(resultHolder.get());
+        Object dagResult = resultHolder.get();
+        if (dagResult != null) {
+            httpContext.setResponseBody(dagResult);
+        }
     }
 
     private void handlePassthrough(ApiDefinition api, LoomHttpContextImpl httpContext) {
         List<LoomInterceptor> interceptors = interceptorRegistry.getInterceptors(api.interceptors());
 
         Runnable serviceCall = () -> {
-            ServiceClient client = serviceClientRegistry.getClient(api.serviceName());
+            try {
+                ServiceClient client = serviceClientRegistry.getRouteClient(api.serviceName(), api.serviceRoute());
 
-            Map<String, String> headers = new LinkedHashMap<>();
-            httpContext.getHeaders().forEach((k, v) -> {
-                if (!k.equalsIgnoreCase("host") && !k.equalsIgnoreCase("content-length")) {
-                    headers.put(k, v.get(0));
-                }
-            });
+                Map<String, String> headers = new LinkedHashMap<>();
+                httpContext.getHeaders().forEach((k, v) -> {
+                    if (!HOP_BY_HOP_HEADERS.contains(k.toLowerCase(ROOT))) {
+                        headers.put(k, v.size() == 1 ? v.get(0) : String.join(", ", v));
+                    }
+                });
 
-            String resolvedPath = api.servicePathTemplate().resolve(
-                    httpContext.getPathVariablesRaw(), httpContext.getQueryString());
+                String resolvedPath = api.servicePathTemplate().resolve(
+                        httpContext.getPathVariablesRaw(), httpContext.getQueryString());
 
-            String method = httpContext.getHttpMethod().toUpperCase();
-            Object result = switch (method) {
-                case "GET" -> client.get(resolvedPath, Object.class, headers);
-                case "POST" -> client.post(resolvedPath, httpContext.getRawRequestBody(), Object.class, headers);
-                case "PUT" -> client.put(resolvedPath, httpContext.getRawRequestBody(), Object.class, headers);
-                case "DELETE" -> client.delete(resolvedPath, Object.class, headers);
-                case "PATCH" -> client.patch(resolvedPath, httpContext.getRawRequestBody(), Object.class, headers);
-                default -> throw new UnsupportedOperationException("Unsupported method: " + method);
-            };
+                String method = httpContext.getHttpMethod().toUpperCase();
+                Object result = switch (method) {
+                    case "GET" -> client.get(resolvedPath, Object.class, headers);
+                    case "POST" -> client.post(resolvedPath, httpContext.getRawRequestBody(), Object.class, headers);
+                    case "PUT" -> client.put(resolvedPath, httpContext.getRawRequestBody(), Object.class, headers);
+                    case "DELETE" -> client.delete(resolvedPath, Object.class, headers);
+                    case "PATCH" -> client.patch(resolvedPath, httpContext.getRawRequestBody(), Object.class, headers);
+                    default -> throw new UnsupportedOperationException("Unsupported method: " + method);
+                };
 
-            httpContext.setResponseBody(result);
+                httpContext.setResponseBody(result);
+            } catch (LoomException ex) {
+                throw (LoomException) ex.withApiRoute(api.method() + " " + api.path());
+            } catch (Exception ex) {
+                throw (LoomException) new LoomException("Proxy call failed", ex)
+                        .withApiRoute(api.method() + " " + api.path());
+            }
         };
 
         DefaultInterceptorChain chain = new DefaultInterceptorChain(interceptors, serviceCall);

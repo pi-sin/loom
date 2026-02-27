@@ -12,17 +12,16 @@ import java.lang.reflect.*;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class DslJsonCodec implements JsonCodec {
 
+    private static final System.Logger LOG = System.getLogger(DslJsonCodec.class.getName());
     private static final int MAX_POOL_SIZE = 256;
 
     private final DslJson<Object> dslJson;
-    private final ConcurrentLinkedQueue<JsonWriter> writerPool = new ConcurrentLinkedQueue<>();
-    private final AtomicInteger poolSize = new AtomicInteger();
+    private final LinkedBlockingQueue<JsonWriter> writerPool = new LinkedBlockingQueue<>(MAX_POOL_SIZE);
     private final ConcurrentHashMap<Class<?>, Boolean> checkedTypes = new ConcurrentHashMap<>();
     private final HashSet<Class<?>> inProgress = new HashSet<>(); // only accessed under analysisLock
     private final ReentrantLock analysisLock = new ReentrantLock();
@@ -125,6 +124,8 @@ public class DslJsonCodec implements JsonCodec {
             // block on analysisLock until converters are fully registered.
             checkedTypes.put(type, Boolean.TRUE);
         } catch (Exception e) {
+            LOG.log(System.Logger.Level.WARNING, "[Loom] Failed to analyze type " + type.getName()
+                    + " for boolean getter support: " + e.getMessage());
             // Fall through to dsl-json default; mark done to avoid retrying
             checkedTypes.put(type, Boolean.TRUE);
         } finally {
@@ -294,7 +295,6 @@ public class DslJsonCodec implements JsonCodec {
     private JsonWriter borrowWriter() {
         JsonWriter writer = writerPool.poll();
         if (writer != null) {
-            poolSize.decrementAndGet();
             writer.reset();
             return writer;
         }
@@ -303,11 +303,7 @@ public class DslJsonCodec implements JsonCodec {
 
     private void returnWriter(JsonWriter writer) {
         writer.reset();
-        if (poolSize.getAndIncrement() < MAX_POOL_SIZE) {
-            writerPool.offer(writer);
-        } else {
-            poolSize.decrementAndGet();
-        }
+        writerPool.offer(writer); // silently drops if full
     }
 
     // ── Property accessor record ─────────────────────────────────────────

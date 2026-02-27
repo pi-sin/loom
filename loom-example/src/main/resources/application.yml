@@ -8,7 +8,7 @@ server:
 loom:
   services:
     product-service:
-      base-url: http://localhost:8081
+      url: http://localhost:8081
       connect-timeout-ms: 3000
       read-timeout-ms: 5000
       retry:
@@ -16,28 +16,66 @@ loom:
         initial-delay-ms: 100
         multiplier: 2.0
         max-delay-ms: 2000
+      routes:
+        get-product:
+          path: /products/{id}
+          method: GET
+        search-products:
+          path: /products
+          method: GET
     pricing-service:
-      base-url: http://localhost:8082
+      url: http://localhost:8082
       connect-timeout-ms: 3000
       read-timeout-ms: 5000
+      routes:
+        get-pricing:
+          path: /pricing/{id}
+          method: GET
+          read-timeout-ms: 2000
     review-service:
-      base-url: http://localhost:8083
+      url: http://localhost:8083
       connect-timeout-ms: 2000
       read-timeout-ms: 3000
+      routes:
+        get-reviews:
+          path: /reviews
+          method: GET
     user-service:
-      base-url: http://localhost:8084
+      url: http://localhost:8084
       connect-timeout-ms: 3000
       read-timeout-ms: 5000
+      routes:
+        get-user:
+          path: /users/{userId}
+          method: GET
     order-service:
-      base-url: http://localhost:8085
+      url: http://localhost:8085
       connect-timeout-ms: 3000
       read-timeout-ms: 5000
+      routes:
+        create-order:
+          path: /internal/orders
+          method: POST
+        get-order:
+          path: /internal/orders/{orderId}
+          method: GET
+        get-user-orders:
+          path: /orders
+          method: GET
     notification-service:
-      base-url: http://localhost:8086
+      url: http://localhost:8086
       connect-timeout-ms: 2000
       read-timeout-ms: 3000
+      routes:
+        get-notifications:
+          path: /notifications
+          method: GET
     health-service:
-      base-url: http://localhost:8087
+      url: http://localhost:8087
+      routes:
+        health-check:
+          path: /internal/health
+          method: GET
   swagger:
     enabled: true
   ui:

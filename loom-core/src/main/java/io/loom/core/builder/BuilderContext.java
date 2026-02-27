@@ -1,6 +1,6 @@
 package io.loom.core.builder;
 
-import io.loom.core.service.ServiceClient;
+import io.loom.core.service.ServiceAccessor;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,8 +24,8 @@ public interface BuilderContext {
     <T> Optional<T> getOptionalDependency(Class<T> outputType);
     <T> Optional<T> getOptionalResultOf(Class<? extends LoomBuilder<T>> builderClass);
 
-    // Service HTTP client
-    ServiceClient service(String name);
+    // Service accessor (route-based)
+    ServiceAccessor service(String name);
 
     // Custom attributes
     void setAttribute(String key, Object value);
@@ -34,7 +34,4 @@ public interface BuilderContext {
 
     // Result storage (used by DagExecutor)
     void storeResult(Class<? extends LoomBuilder<?>> builderClass, Class<?> outputType, Object result);
-
-    // Correlation ID
-    String getRequestId();
 }

@@ -2,10 +2,11 @@ package io.loom.core.engine;
 
 import io.loom.core.builder.BuilderContext;
 import io.loom.core.builder.LoomBuilder;
-import io.loom.core.exception.DependencyResolutionException;
+import io.loom.core.exception.LoomDependencyResolutionException;
 import io.loom.core.exception.LoomException;
+import io.loom.core.exception.LoomServiceClientException;
 import io.loom.core.registry.BuilderFactory;
-import io.loom.core.service.ServiceClient;
+import io.loom.core.service.ServiceAccessor;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
@@ -38,47 +39,51 @@ class DagExecutorTest {
         @Override public Map<String, List<String>> getQueryParams() { return Map.of(); }
         @Override public Map<String, List<String>> getHeaders() { return Map.of(); }
         @Override public byte[] getRawRequestBody() { return null; }
-        @Override public ServiceClient service(String name) { return null; }
+        @Override public ServiceAccessor service(String name) { return null; }
         @Override public void setAttribute(String key, Object value) { attributes.put(key, value); }
         @Override @SuppressWarnings("unchecked")
         public <T> T getAttribute(String key, Class<T> type) { return (T) attributes.get(key); }
         @Override public Map<String, Object> getAttributes() { return attributes; }
-        @Override public String getRequestId() { return "test-id"; }
+
+        private static final Object NULL_SENTINEL = new Object();
 
         @Override
         public void storeResult(Class<? extends LoomBuilder<?>> builderClass, Class<?> outputType, Object result) {
-            resultsByBuilder.put(builderClass, result);
-            resultsByType.put(outputType, result);
+            Object stored = result != null ? result : NULL_SENTINEL;
+            resultsByBuilder.put(builderClass, stored);
+            resultsByType.put(outputType, stored);
         }
 
         @Override @SuppressWarnings("unchecked")
         public <T> T getDependency(Class<T> outputType) {
             Object result = resultsByType.get(outputType);
-            if (result == null) throw new DependencyResolutionException(
+            if (result == null) throw new LoomDependencyResolutionException(
                     outputType.getSimpleName(),
                     resultsByType.keySet().stream().map(Class::getSimpleName).toList(),
                     resultsByBuilder.keySet().stream().map(Class::getSimpleName).toList());
-            return (T) result;
+            return result == NULL_SENTINEL ? null : (T) result;
         }
 
         @Override @SuppressWarnings("unchecked")
         public <T> T getResultOf(Class<? extends LoomBuilder<T>> builderClass) {
             Object result = resultsByBuilder.get(builderClass);
-            if (result == null) throw new DependencyResolutionException(
+            if (result == null) throw new LoomDependencyResolutionException(
                     "builder:" + builderClass.getSimpleName(),
                     resultsByType.keySet().stream().map(Class::getSimpleName).toList(),
                     resultsByBuilder.keySet().stream().map(Class::getSimpleName).toList());
-            return (T) result;
+            return result == NULL_SENTINEL ? null : (T) result;
         }
 
         @Override @SuppressWarnings("unchecked")
         public <T> Optional<T> getOptionalDependency(Class<T> outputType) {
-            return Optional.ofNullable((T) resultsByType.get(outputType));
+            Object value = resultsByType.get(outputType);
+            return value == null ? Optional.empty() : Optional.ofNullable(value == NULL_SENTINEL ? null : (T) value);
         }
 
         @Override @SuppressWarnings("unchecked")
         public <T> Optional<T> getOptionalResultOf(Class<? extends LoomBuilder<T>> builderClass) {
-            return Optional.ofNullable((T) resultsByBuilder.get(builderClass));
+            Object value = resultsByBuilder.get(builderClass);
+            return value == null ? Optional.empty() : Optional.ofNullable(value == NULL_SENTINEL ? null : (T) value);
         }
     }
 
@@ -177,6 +182,11 @@ class DagExecutorTest {
 
     static class FailingBuilder implements LoomBuilder<String> {
         public String build(BuilderContext ctx) { throw new RuntimeException("boom"); }
+    }
+    static class ServiceClientFailingBuilder implements LoomBuilder<String> {
+        public String build(BuilderContext ctx) {
+            throw new LoomServiceClientException("payment-svc", 503, "Bad Gateway");
+        }
     }
     record OptionalResult(String primary, Optional<String> secondary) {}
     static class CollectorBuilder implements LoomBuilder<OptionalResult> {
@@ -386,14 +396,84 @@ class DagExecutorTest {
 
         assertThatThrownBy(() -> executor.execute(dag, new StubBuilderContext()))
                 .rootCause()
-                .isInstanceOf(DependencyResolutionException.class)
+                .isInstanceOf(LoomDependencyResolutionException.class)
                 .satisfies(root -> {
-                    DependencyResolutionException dre = (DependencyResolutionException) root;
+                    LoomDependencyResolutionException dre = (LoomDependencyResolutionException) root;
                     assertThat(dre.getRequestedType()).isEqualTo("Dashboard");
                     assertThat(dre.getAvailableTypes()).contains("String");
                     assertThat(dre.getCompletedBuilders()).contains("FastBuilder");
                     assertThat(dre.getMessage()).contains("Available output types:");
                     assertThat(dre.getMessage()).contains("Completed builders:");
                 });
+    }
+
+    // ── Null builder output types ──
+
+    static class NullReturningBuilder implements LoomBuilder<String> {
+        public String build(BuilderContext ctx) { return null; }
+    }
+    static class NullConsumerBuilder implements LoomBuilder<FinalResult> {
+        public FinalResult build(BuilderContext ctx) {
+            String value = ctx.getDependency(String.class);
+            return new FinalResult(value == null ? "was-null" : value);
+        }
+    }
+
+    @Test
+    void shouldHandleBuilderReturningNull() {
+        BuilderFactory factory = mock(BuilderFactory.class);
+        doReturn(new NullReturningBuilder()).when(factory).createBuilderUntyped(NullReturningBuilder.class);
+        doReturn(new NullConsumerBuilder()).when(factory).createBuilderUntyped(NullConsumerBuilder.class);
+
+        Map<Class<? extends LoomBuilder<?>>, DagNode> nodes = new LinkedHashMap<>();
+        nodes.put(NullReturningBuilder.class, new DagNode(NullReturningBuilder.class, Set.of(), true, 5000, String.class));
+        nodes.put(NullConsumerBuilder.class, new DagNode(NullConsumerBuilder.class,
+                Set.of(NullReturningBuilder.class), true, 5000, FinalResult.class));
+
+        DagNode terminal = nodes.get(NullConsumerBuilder.class);
+        List<DagNode> topoOrder = List.of(nodes.get(NullReturningBuilder.class), terminal);
+        Dag dag = new Dag(nodes, topoOrder, terminal);
+
+        DagExecutor executor = new DagExecutor(factory);
+        Object result = executor.execute(dag, new StubBuilderContext());
+
+        assertThat(result).isInstanceOf(FinalResult.class);
+        assertThat(((FinalResult) result).value).isEqualTo("was-null");
+    }
+
+    @Test
+    void optionalFailedNodeStoresUnwrappedCause() {
+        // Optional node fails with LoomServiceClientException — verify the cause
+        // stored in BuilderResult is the original exception, not CompletionException
+        BuilderFactory factory = mock(BuilderFactory.class);
+        doReturn(new SlowBuilder()).when(factory).createBuilderUntyped(SlowBuilder.class);
+        doReturn(new ServiceClientFailingBuilder()).when(factory).createBuilderUntyped(ServiceClientFailingBuilder.class);
+
+        // Collector that inspects both required and optional results
+        LoomBuilder<String> inspectorBuilder = ctx -> {
+            Integer required = ctx.getDependency(Integer.class);
+            Optional<String> optional = ctx.getOptionalResultOf(ServiceClientFailingBuilder.class);
+            return "required=" + required + ",optional=" + optional.orElse("absent");
+        };
+        doReturn(inspectorBuilder).when(factory).createBuilderUntyped(AssemblerBuilder.class);
+
+        Map<Class<? extends LoomBuilder<?>>, DagNode> nodes = new LinkedHashMap<>();
+        nodes.put(SlowBuilder.class, new DagNode(SlowBuilder.class, Set.of(), true, 5000, Integer.class));
+        nodes.put(ServiceClientFailingBuilder.class,
+                new DagNode(ServiceClientFailingBuilder.class, Set.of(), false, 5000, String.class));
+        nodes.put(AssemblerBuilder.class, new DagNode(AssemblerBuilder.class,
+                Set.of(SlowBuilder.class, ServiceClientFailingBuilder.class), true, 5000, FinalResult.class));
+
+        DagNode terminal = nodes.get(AssemblerBuilder.class);
+        List<DagNode> topoOrder = List.of(
+                nodes.get(SlowBuilder.class), nodes.get(ServiceClientFailingBuilder.class), terminal);
+        Dag dag = new Dag(nodes, topoOrder, terminal);
+
+        DagExecutor executor = new DagExecutor(factory);
+        Object result = executor.execute(dag, new StubBuilderContext());
+
+        // The optional node failed, so its result is absent (not CompletionException)
+        assertThat(result).isInstanceOf(String.class);
+        assertThat((String) result).isEqualTo("required=42,optional=absent");
     }
 }

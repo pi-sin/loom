@@ -21,17 +21,34 @@ public class LoomProperties {
 
     private SwaggerProperties swagger = new SwaggerProperties();
 
+    private long maxRequestBodySize = 10485760; // 10MB
+
     private List<String> basePackages = new ArrayList<>();
 
     @Data
     public static class ServiceProperties {
-        private String baseUrl;
+        private String url;
 
         private long connectTimeoutMs = 5000;
 
         private long readTimeoutMs = 30000;
 
         private RetryProperties retry = new RetryProperties();
+
+        private Map<String, RouteProperties> routes = new HashMap<>();
+    }
+
+    @Data
+    public static class RouteProperties {
+        private String path;
+
+        private String method = "GET";
+
+        private long connectTimeoutMs = -1;
+
+        private long readTimeoutMs = -1;
+
+        private RetryProperties retry;
     }
 
     @Data

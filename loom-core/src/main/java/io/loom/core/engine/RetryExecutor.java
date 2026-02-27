@@ -31,6 +31,9 @@ public class RetryExecutor {
             }
         }
 
+        if (lastException instanceof RuntimeException re) {
+            throw re;
+        }
         throw new RuntimeException(
                 "All " + config.maxAttempts() + " attempts failed for: " + operationName, lastException);
     }

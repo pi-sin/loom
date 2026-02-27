@@ -15,5 +15,5 @@ import io.loom.example.interceptor.ApiKeyInterceptor;
          summary = "Create a new order",
          tags = {"Orders"},
          headers = {@LoomHeaderParam(name = "X-API-Key", required = true, description = "API key")})
-@LoomProxy(name = "order-service", path = "/internal/orders")
+@LoomProxy(service = "order-service", route = "create-order")
 public class CreateOrderApi {}

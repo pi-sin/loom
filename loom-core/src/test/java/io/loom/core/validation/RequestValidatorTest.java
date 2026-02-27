@@ -426,7 +426,6 @@ class RequestValidatorTest {
             @Override public void setResponseBody(Object body) {}
             @Override public int getResponseStatus() { return 200; }
             @Override public Object getResponseBody() { return null; }
-            @Override public String getRequestId() { return "test-id"; }
         };
     }
 }

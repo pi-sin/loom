@@ -13,7 +13,8 @@ public class FetchUserNotificationsBuilder implements LoomBuilder<UserNotificati
     @Override
     public UserNotifications build(BuilderContext context) {
         String userId = context.getPathVariable("userId");
-        // In a real app: context.service("notification-service").get(...)
+        // In a real app: context.service("notification-service").route("get-notifications")
+        //   .queryParam("userId", userId).get(...)
         return new UserNotifications(List.of(
                 new UserNotifications.Notification("N1", "Your order has been shipped!", false),
                 new UserNotifications.Notification("N2", "New product recommendation", true)

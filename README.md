@@ -136,8 +136,8 @@ public class ProductDetailApi {}
 @Component
 public class FetchProductBuilder implements LoomBuilder<ProductInfo> {
     public ProductInfo build(BuilderContext ctx) {
-        String id = ctx.getPathVariable("id");
-        return ctx.service("product-service").get("/products/" + id, ProductInfo.class);
+        // {id} auto-forwarded from incoming request path variables
+        return ctx.service("product-service").route("get-product").get(ProductInfo.class);
     }
 }
 
@@ -163,16 +163,30 @@ spring:
 loom:
   services:
     product-service:
-      base-url: http://localhost:8081
+      url: http://localhost:8081
       retry:
         max-attempts: 3
         initial-delay-ms: 100
+      routes:
+        get-product:
+          path: /products/{id}
+          method: GET
+        search-products:
+          path: /products
+          method: GET
+    pricing-service:
+      url: http://localhost:8082
+      routes:
+        get-pricing:
+          path: /pricing/{id}
+          method: GET
+          read-timeout-ms: 2000    # route-level timeout override
 ```
 
 ### 5. Add a Passthrough API
 
 Passthrough APIs use `@LoomApi` + `@LoomProxy` — they get interceptors, swagger schemas, and
-typed request/response for free:
+typed request/response for free. `@LoomProxy` references a named service and route from YAML config:
 
 ```java
 @LoomApi(method = "POST", path = "/api/orders",
@@ -180,12 +194,12 @@ typed request/response for free:
          interceptors = {ApiKeyInterceptor.class},
          summary = "Create a new order", tags = {"Orders"},
          headers = {@LoomHeaderParam(name = "X-API-Key", required = true, description = "API key")})
-@LoomProxy(name = "order-service", path = "/internal/orders")
+@LoomProxy(service = "order-service", route = "create-order")
 public class CreateOrderApi {}
 ```
 
-The service HTTP call inherits the method from `@LoomApi.method()`. **Path variables** are resolved
-in the proxy path (e.g., `{orderId}` becomes the actual value). **Query parameters** are forwarded
+The route's `path` and `method` are defined in YAML config under `loom.services.order-service.routes.create-order`.
+**Path variables** are resolved from the incoming request. **Query parameters** are forwarded
 automatically. Client request headers are forwarded (excluding `Host` and `Content-Length`), and the
 request body is forwarded as-is for POST/PUT/PATCH.
 
@@ -197,7 +211,7 @@ service:
          response = OrderResponse.class,
          interceptors = {ApiKeyInterceptor.class},
          headers = {@LoomHeaderParam(name = "X-API-Key", required = true, description = "API key")})
-@LoomProxy(name = "order-service", path = "/internal/orders/{orderId}")
+@LoomProxy(service = "order-service", route = "get-order")
 public class GetOrderApi {}
 ```
 
@@ -208,7 +222,7 @@ For simple passthrough routes without typed schemas:
 
 ```java
 @LoomApi(method = "GET", path = "/api/health", summary = "Health check", tags = {"Infrastructure"})
-@LoomProxy(name = "health-service", path = "/internal/health")
+@LoomProxy(service = "health-service", route = "health-check")
 public class HealthCheckApi {}
 ```
 
@@ -306,7 +320,9 @@ dependencies resolve.
 | `LoomBuilder<O>`  | DAG node implementation. `O build(BuilderContext ctx)`                                                |
 | `BuilderContext`  | Shared context for all builders in a request                                                          |
 | `LoomInterceptor` | Request/response processing. `void handle(LoomHttpContext, InterceptorChain)` + `default int order()` |
-| `ServiceClient`   | HTTP client for service calls (get/post/put/delete/patch)                                             |
+| `ServiceAccessor` | Entry point for route-based service invocation. `route(name)` returns `RouteInvoker`                  |
+| `RouteInvoker`    | Fluent interface for invoking a route: `.pathVar()`, `.queryParam()`, `.header()`, `.body()`, `.get()`/`.post()`/etc. |
+| `ServiceClient`   | Low-level HTTP client for service calls (get/post/put/delete/patch)                                   |
 
 ### BuilderContext Methods
 
@@ -320,9 +336,8 @@ dependencies resolve.
 | `getResultOf(builderClass)`         | Get dependency by builder class (throws if missing) |
 | `getOptionalDependency(outputType)` | Get optional dependency by output type              |
 | `getOptionalResultOf(builderClass)` | Get optional dependency by builder class            |
-| `service(name)`                     | Get service HTTP client                             |
+| `service(name)`                     | Get `ServiceAccessor` for route-based invocation    |
 | `getAttribute(key, type)`           | Get attribute set by interceptor                    |
-| `getRequestId()`                    | Auto-generated correlation ID                       |
 
 ### Configuration
 
@@ -330,17 +345,39 @@ dependencies resolve.
 loom:
   services:
     service-name:
-      base-url: http://host:port
-      connect-timeout-ms: 5000
+      url: http://host:port
+      connect-timeout-ms: 5000           # service-level defaults
       read-timeout-ms: 30000
       retry:
         max-attempts: 3
         initial-delay-ms: 100
         multiplier: 2.0
         max-delay-ms: 5000
+      routes:
+        get-resource:
+          path: /resources/{id}
+          method: GET
+          read-timeout-ms: 2000          # route-level override (optional)
+        create-resource:
+          path: /resources
+          method: POST
+  max-request-body-size: 10485760        # Max request body in bytes (default: 10MB)
   ui:
-    enabled: true                  # Enable DAG visualization at /loom/ui
+    enabled: true                        # Enable DAG visualization at /loom/ui
 ```
+
+### Error Handling
+
+Loom does **not** include a built-in `@ControllerAdvice`. All framework exceptions extend `LoomException`, so you can define your own error handler with your own response format:
+
+- `LoomServiceClientException` — upstream service returned an HTTP error or failed
+- `LoomBuilderTimeoutException` — a builder exceeded its configured timeout
+- `LoomDependencyResolutionException` — a builder dependency was missing at runtime
+- `LoomValidationException` — request validation failed
+- `LoomCycleDetectedException` — DAG cycle detected at startup
+- `LoomRouteNotFoundException` — referenced route not found in config
+
+All exceptions carry an `apiRoute` field (e.g. `GET /api/orders/{id}`) for observability.
 
 ## Swagger / OpenAPI
 
@@ -389,7 +426,7 @@ Passthrough APIs use the same `@LoomApi` annotation, so they get full swagger su
          request = CreateOrderRequest.class, response = OrderResponse.class,
          summary = "Create a new order", tags = {"Orders"},
          headers = {@LoomHeaderParam(name = "X-API-Key", required = true, description = "API key")})
-@LoomProxy(name = "order-service", path = "/internal/orders")
+@LoomProxy(service = "order-service", route = "create-order")
 public class CreateOrderApi {}
 ```
 
@@ -403,15 +440,31 @@ loom:
 
 ## Service API Cookbook
 
-### GET with Path Params
+### GET with Auto-Forwarded Path Params
 
 ```java
-
+// Route config: product-service.routes.get-product.path = /products/{id}
 @Component
 public class FetchProductBuilder implements LoomBuilder<ProductInfo> {
     public ProductInfo build(BuilderContext ctx) {
-        String id = ctx.getPathVariable("id");
-        return ctx.service("product-service").get("/products/" + id, ProductInfo.class);
+        // {id} auto-forwarded from incoming request path variables
+        return ctx.service("product-service").route("get-product").get(ProductInfo.class);
+    }
+}
+```
+
+### GET with Explicit Path Var (from dependency)
+
+```java
+// Route config: pricing-service.routes.get-pricing.path = /pricing/{id}
+@Component
+public class FetchPricingBuilder implements LoomBuilder<PricingInfo> {
+    public PricingInfo build(BuilderContext ctx) {
+        ProductInfo product = ctx.getDependency(ProductInfo.class);
+        // Explicit pathVar when value comes from a dependency, not the incoming request
+        return ctx.service("pricing-service").route("get-pricing")
+                .pathVar("id", product.id())
+                .get(PricingInfo.class);
     }
 }
 ```
@@ -419,52 +472,33 @@ public class FetchProductBuilder implements LoomBuilder<ProductInfo> {
 ### GET with Query Params
 
 ```java
-
+// Route config: product-service.routes.search-products.path = /products
 @Component
 public class SearchProductsBuilder implements LoomBuilder<ProductList> {
     public ProductList build(BuilderContext ctx) {
-        String category = ctx.getQueryParam("category");
-        String page = ctx.getQueryParam("page");
-        String sort = ctx.getQueryParam("sort");
-
-        String path =
-                "/products?category=" + category + "&page=" + (page != null ? page : "1") + "&sort="
-                        + (sort != null ? sort : "relevance");
-
-        return ctx.service("product-service").get(path, ProductList.class);
+        // Incoming query params (category, page, sort) auto-forwarded
+        // Add explicit overrides as needed
+        return ctx.service("product-service").route("search-products")
+                .queryParam("page", ctx.getQueryParam("page") != null ? ctx.getQueryParam("page") : "1")
+                .get(ProductList.class);
     }
 }
 ```
 
-For `GET /api/products?category=electronics&page=2&sort=price`, the builder receives all query
-params via `ctx.getQueryParam(name)`. For multi-valued params, use `ctx.getQueryParams()` which
-returns `Map<String, List<String>>`.
+For `GET /api/products?category=electronics&page=2&sort=price`, incoming query params are
+auto-forwarded; explicit `.queryParam()` overrides take precedence.
 
 ### POST with Request Body
 
 ```java
-// API definition — note the `request` type for incoming body
-@LoomApi(method = "POST",
-         path = "/api/orders",
-         request = CreateOrderRequest.class,
-         response = OrderResponse.class)
-@LoomGraph({@Node(builder = ValidateOrderBuilder.class),
-        @Node(builder = CreateOrderBuilder.class, dependsOn = ValidateOrderBuilder.class),
-        @Node(builder = SendConfirmationBuilder.class, dependsOn = CreateOrderBuilder.class)})
-public class CreateOrderApi {}
-
-// DTOs
-public record CreateOrderRequest(String productId, int quantity, String shippingAddress) {}
-
-public record OrderResponse(String orderId, String status, String estimatedDelivery) {}
-
-// Builder — reads the incoming request body, POSTs to service
+// Route config: order-service.routes.create-order.path = /internal/orders
 @Component
 public class CreateOrderBuilder implements LoomBuilder<OrderResponse> {
     public OrderResponse build(BuilderContext ctx) {
         CreateOrderRequest request = ctx.getRequestBody(CreateOrderRequest.class);
-
-        return ctx.service("order-service").post("/internal/orders", request, OrderResponse.class);
+        return ctx.service("order-service").route("create-order")
+                .body(request)
+                .post(OrderResponse.class);
     }
 }
 ```
@@ -472,20 +506,16 @@ public class CreateOrderBuilder implements LoomBuilder<OrderResponse> {
 ### PUT with Custom Headers
 
 ```java
-
+// Route config: user-service.routes.update-user.path = /users/{userId}
 @Component
 public class UpdateProfileBuilder implements LoomBuilder<UserProfile> {
     public UserProfile build(BuilderContext ctx) {
-        String userId = ctx.getPathVariable("userId");
         UpdateProfileRequest body = ctx.getRequestBody(UpdateProfileRequest.class);
-
-        // Forward auth header from original request + add custom headers
-        Map<String, String> headers = Map.of("Authorization", ctx.getHeader("Authorization"),
-                                             "X-Request-ID", ctx.getRequestId(), "Content-Type",
-                                             "application/json");
-
-        return ctx.service("user-service")
-                .put("/users/" + userId, body, UserProfile.class, headers);
+        // {userId} auto-forwarded from incoming request
+        return ctx.service("user-service").route("update-user")
+                .body(body)
+                .header("Authorization", ctx.getHeader("Authorization"))
+                .put(UserProfile.class);
     }
 }
 ```
@@ -493,15 +523,12 @@ public class UpdateProfileBuilder implements LoomBuilder<UserProfile> {
 ### DELETE
 
 ```java
-
+// Route config: cart-service.routes.delete-item.path = /carts/{cartId}/items/{itemId}
 @Component
 public class DeleteCartItemBuilder implements LoomBuilder<Void> {
     public Void build(BuilderContext ctx) {
-        String cartId = ctx.getPathVariable("cartId");
-        String itemId = ctx.getPathVariable("itemId");
-
-        return ctx.service("cart-service")
-                .delete("/carts/" + cartId + "/items/" + itemId, Void.class);
+        // {cartId} and {itemId} auto-forwarded from incoming request
+        return ctx.service("cart-service").route("delete-item").delete(Void.class);
     }
 }
 ```
@@ -509,15 +536,15 @@ public class DeleteCartItemBuilder implements LoomBuilder<Void> {
 ### PATCH with Partial Update
 
 ```java
-
+// Route config: order-service.routes.patch-order.path = /orders/{orderId}
 @Component
 public class PatchOrderBuilder implements LoomBuilder<OrderResponse> {
     public OrderResponse build(BuilderContext ctx) {
-        String orderId = ctx.getPathVariable("orderId");
         Map<String, Object> patch = ctx.getRequestBody(Map.class);
-
-        return ctx.service("order-service")
-                .patch("/orders/" + orderId, patch, OrderResponse.class);
+        // {orderId} auto-forwarded from incoming request
+        return ctx.service("order-service").route("patch-order")
+                .body(patch)
+                .patch(OrderResponse.class);
     }
 }
 ```
@@ -544,11 +571,10 @@ public class FetchUserDataBuilder implements LoomBuilder<UserData> {
     public UserData build(BuilderContext ctx) {
         User user = ctx.getAttribute("authenticatedUser", User.class);
 
-        Map<String, String> headers = Map.of("X-User-ID", user.id(), "X-Correlation-ID",
-                                             ctx.getRequestId());
-
-        return ctx.service("user-service")
-                .get("/users/" + user.id() + "/data", UserData.class, headers);
+        return ctx.service("user-service").route("get-user-data")
+                .pathVar("userId", user.id())
+                .header("X-User-ID", user.id())
+                .get(UserData.class);
     }
 }
 ```
@@ -606,32 +632,28 @@ public class DebugBuilder implements LoomBuilder<Map<String, Object>> {
         String method = ctx.getHttpMethod();  // "GET", "POST", etc.
         String path = ctx.getRequestPath();   // "/api/products/42"
 
-        // Auto-generated request correlation ID
-        String requestId = ctx.getRequestId();
-
         return Map.of("method", method, "path", path, "pathVars", pathVars);
     }
 }
 ```
 
-### ServiceClient Method Reference
+### RouteInvoker Method Reference
 
-| Method   | Signature                                  | Use Case                 |
-|----------|--------------------------------------------|--------------------------|
-| `get`    | `get(path, responseType)`                  | Simple GET               |
-| `get`    | `get(path, responseType, headers)`         | GET with custom headers  |
-| `post`   | `post(path, body, responseType)`           | POST with JSON body      |
-| `post`   | `post(path, body, responseType, headers)`  | POST with body + headers |
-| `put`    | `put(path, body, responseType)`            | Full resource update     |
-| `put`    | `put(path, body, responseType, headers)`   | PUT with headers         |
-| `delete` | `delete(path, responseType)`               | Delete resource          |
-| `delete` | `delete(path, responseType, headers)`      | Delete with auth headers |
-| `patch`  | `patch(path, body, responseType)`          | Partial update           |
-| `patch`  | `patch(path, body, responseType, headers)` | Partial update + headers |
+| Method                            | Description                                              |
+|-----------------------------------|----------------------------------------------------------|
+| `.pathVar(name, value)`           | Override/set a path variable (auto-forwarded by default) |
+| `.queryParam(name, value)`        | Override/add a query parameter (auto-forwarded by default) |
+| `.header(name, value)`            | Add a request header (only explicit headers forwarded)   |
+| `.body(object)`                   | Set the request body (for POST/PUT/PATCH)                |
+| `.get(responseType)`              | Execute GET                                              |
+| `.post(responseType)`             | Execute POST                                             |
+| `.put(responseType)`              | Execute PUT                                              |
+| `.delete(responseType)`           | Execute DELETE                                           |
+| `.patch(responseType)`            | Execute PATCH                                            |
 
 All service calls are **blocking on virtual threads** — the virtual thread unmounts from the
 carrier thread during I/O wait, so blocking is as efficient as async with much simpler code. Retry
-with exponential backoff is automatic based on service configuration.
+with exponential backoff is automatic based on service/route configuration.
 
 ## Virtual Threads
 

@@ -2,10 +2,9 @@ package io.loom.starter.service;
 
 import io.loom.core.codec.JsonCodec;
 import io.loom.core.engine.RetryExecutor;
-import io.loom.core.exception.ServiceClientException;
+import io.loom.core.exception.LoomServiceClientException;
 import io.loom.core.service.RetryConfig;
 import io.loom.core.service.ServiceClient;
-import io.loom.core.service.ServiceConfig;
 import io.loom.starter.codec.DslJsonHttpMessageConverter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -26,19 +25,22 @@ public class RestServiceClient implements ServiceClient {
     private final RetryExecutor retryExecutor;
     private final RetryConfig retryConfig;
 
-    public RestServiceClient(ServiceConfig config, RetryExecutor retryExecutor, JsonCodec jsonCodec) {
-        this.name = config.name();
+    public RestServiceClient(String name, String url, long connectTimeoutMs,
+                              long readTimeoutMs, RetryConfig retryConfig,
+                              RetryExecutor retryExecutor, JsonCodec jsonCodec) {
+        this.name = name;
         this.retryExecutor = retryExecutor;
-        this.retryConfig = config.retry();
+        this.retryConfig = retryConfig;
 
         var httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(config.connectTimeoutMs()))
+                .connectTimeout(Duration.ofMillis(connectTimeoutMs))
+                .executor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor())
                 .build();
         var requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(Duration.ofMillis(config.readTimeoutMs()));
+        requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
 
         this.restClient = RestClient.builder()
-                .baseUrl(config.baseUrl())
+                .baseUrl(url)
                 .requestFactory(requestFactory)
                 .messageConverters(converters -> {
                     converters.clear();
@@ -47,7 +49,7 @@ public class RestServiceClient implements ServiceClient {
                     converters.add(new DslJsonHttpMessageConverter(jsonCodec));
                 })
                 .build();
-        log.info("[Loom] Created service client '{}' -> {}", name, config.baseUrl());
+        log.info("[Loom] Created service client '{}' -> {}", name, url);
     }
 
     @Override
@@ -63,9 +65,9 @@ public class RestServiceClient implements ServiceClient {
                 headers.forEach(spec::header);
                 return spec.retrieve().body(responseType);
             } catch (RestClientResponseException e) {
-                throw new ServiceClientException(name, e.getStatusCode().value(), e.getMessage());
+                throw new LoomServiceClientException(name, e.getStatusCode().value(), e.getMessage(), e);
             } catch (Exception e) {
-                throw new ServiceClientException(name, e.getMessage(), e);
+                throw new LoomServiceClientException(name, e.getMessage(), e);
             }
         }, retryConfig, name + " GET " + path);
     }
@@ -86,9 +88,9 @@ public class RestServiceClient implements ServiceClient {
                 }
                 return spec.retrieve().body(responseType);
             } catch (RestClientResponseException e) {
-                throw new ServiceClientException(name, e.getStatusCode().value(), e.getMessage());
+                throw new LoomServiceClientException(name, e.getStatusCode().value(), e.getMessage(), e);
             } catch (Exception e) {
-                throw new ServiceClientException(name, e.getMessage(), e);
+                throw new LoomServiceClientException(name, e.getMessage(), e);
             }
         }, retryConfig, name + " POST " + path);
     }
@@ -109,9 +111,9 @@ public class RestServiceClient implements ServiceClient {
                 }
                 return spec.retrieve().body(responseType);
             } catch (RestClientResponseException e) {
-                throw new ServiceClientException(name, e.getStatusCode().value(), e.getMessage());
+                throw new LoomServiceClientException(name, e.getStatusCode().value(), e.getMessage(), e);
             } catch (Exception e) {
-                throw new ServiceClientException(name, e.getMessage(), e);
+                throw new LoomServiceClientException(name, e.getMessage(), e);
             }
         }, retryConfig, name + " PUT " + path);
     }
@@ -129,9 +131,9 @@ public class RestServiceClient implements ServiceClient {
                 headers.forEach(spec::header);
                 return spec.retrieve().body(responseType);
             } catch (RestClientResponseException e) {
-                throw new ServiceClientException(name, e.getStatusCode().value(), e.getMessage());
+                throw new LoomServiceClientException(name, e.getStatusCode().value(), e.getMessage(), e);
             } catch (Exception e) {
-                throw new ServiceClientException(name, e.getMessage(), e);
+                throw new LoomServiceClientException(name, e.getMessage(), e);
             }
         }, retryConfig, name + " DELETE " + path);
     }
@@ -152,9 +154,9 @@ public class RestServiceClient implements ServiceClient {
                 }
                 return spec.retrieve().body(responseType);
             } catch (RestClientResponseException e) {
-                throw new ServiceClientException(name, e.getStatusCode().value(), e.getMessage());
+                throw new LoomServiceClientException(name, e.getStatusCode().value(), e.getMessage(), e);
             } catch (Exception e) {
-                throw new ServiceClientException(name, e.getMessage(), e);
+                throw new LoomServiceClientException(name, e.getMessage(), e);
             }
         }, retryConfig, name + " PATCH " + path);
     }

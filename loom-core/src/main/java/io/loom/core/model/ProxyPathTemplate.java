@@ -1,5 +1,7 @@
 package io.loom.core.model;
 
+import io.loom.core.exception.LoomException;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -90,9 +92,11 @@ public final class ProxyPathTemplate {
             for (int i = 0; i < variables.length; i++) {
                 sb.append(literals[i]);
                 String value = pathVariables.get(variables[i]);
-                if (value != null) {
-                    sb.append(value);
+                if (value == null) {
+                    throw new LoomException(
+                            "Missing path variable '{" + variables[i] + "}' in template: " + template);
                 }
+                sb.append(value);
             }
             sb.append(literals[variables.length]);
         }

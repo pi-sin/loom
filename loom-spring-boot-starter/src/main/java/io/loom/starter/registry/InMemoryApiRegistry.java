@@ -18,8 +18,8 @@ public class InMemoryApiRegistry implements ApiRegistry {
     public void registerApi(ApiDefinition api) {
         apis.add(api);
         if (api.isPassthrough()) {
-            log.info("[Loom] Registered passthrough API: {} {} -> {}{}",
-                    api.method(), api.path(), api.serviceName(), api.servicePath());
+            log.info("[Loom] Registered passthrough API: {} {} -> {}.{}",
+                    api.method(), api.path(), api.serviceName(), api.serviceRoute());
         } else {
             log.info("[Loom] Registered builder API: {} {}", api.method(), api.path());
         }

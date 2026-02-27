@@ -9,11 +9,13 @@ import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.servlet.handler.AbstractHandlerMapping;
 
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Slf4j
 public class LoomHandlerMapping extends AbstractHandlerMapping {
 
     private final ApiRegistry apiRegistry;
+    private final ReentrantLock trieLock = new ReentrantLock();
     private volatile RouteTrie routeTrie;
 
     public LoomHandlerMapping(ApiRegistry apiRegistry) {
@@ -27,6 +29,10 @@ public class LoomHandlerMapping extends AbstractHandlerMapping {
 
         String method = request.getMethod();
         String path = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
+            path = path.substring(contextPath.length());
+        }
 
         RouteTrie.RouteMatch match = trie.find(method, path);
         if (match == null) {
@@ -45,7 +51,8 @@ public class LoomHandlerMapping extends AbstractHandlerMapping {
         if (trie != null) {
             return trie;
         }
-        synchronized (this) {
+        trieLock.lock();
+        try {
             if (this.routeTrie != null) {
                 return this.routeTrie;
             }
@@ -56,6 +63,8 @@ public class LoomHandlerMapping extends AbstractHandlerMapping {
             this.routeTrie = trie;
             log.info("[Loom] Built route trie with {} routes", apiRegistry.getAllApis().size());
             return trie;
+        } finally {
+            trieLock.unlock();
         }
     }
 }

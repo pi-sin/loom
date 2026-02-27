@@ -12,7 +12,7 @@ public class CorrelationIdInterceptor implements LoomInterceptor {
     public void handle(LoomHttpContext context, InterceptorChain chain) {
         String correlationId = context.getHeader("X-Correlation-ID");
         if (correlationId == null || correlationId.isBlank()) {
-            correlationId = context.getRequestId();
+            correlationId = java.util.UUID.randomUUID().toString();
         }
         context.setAttribute("correlationId", correlationId);
         context.setResponseHeader("X-Correlation-ID", correlationId);

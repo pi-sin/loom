@@ -1,9 +1,9 @@
 package io.loom.core.engine;
 
 import io.loom.core.builder.LoomBuilder;
-import io.loom.core.exception.CycleDetectedException;
+import io.loom.core.exception.LoomCycleDetectedException;
 import io.loom.core.exception.LoomException;
-import io.loom.core.exception.UnknownDependencyException;
+import io.loom.core.exception.LoomUnknownDependencyException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
@@ -29,7 +29,7 @@ public class DagValidator {
         for (DagNode node : nodes.values()) {
             for (Class<? extends LoomBuilder<?>> dep : node.dependsOn()) {
                 if (!nodes.containsKey(dep)) {
-                    throw new UnknownDependencyException(node.name(), dep.getSimpleName());
+                    throw new LoomUnknownDependencyException(node.name(), dep.getSimpleName());
                 }
             }
         }
@@ -82,7 +82,7 @@ public class DagValidator {
                     cycleNodes.add(entry.getKey().getSimpleName());
                 }
             }
-            throw new CycleDetectedException(cycleNodes);
+            throw new LoomCycleDetectedException(cycleNodes);
         }
 
         return sorted;

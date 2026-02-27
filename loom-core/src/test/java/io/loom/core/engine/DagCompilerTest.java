@@ -55,4 +55,20 @@ class DagCompilerTest {
         Class<?> outputType = DagCompiler.resolveOutputType(TestBuilderA.class);
         assertThat(outputType).isEqualTo(OutputA.class);
     }
+
+    // ── Intermediate interface resolution ──
+
+    static class PricingResult {}
+
+    interface PricingBuilder extends LoomBuilder<PricingResult> {}
+
+    static class ConcretePricingBuilder implements PricingBuilder {
+        public PricingResult build(BuilderContext ctx) { return new PricingResult(); }
+    }
+
+    @Test
+    void shouldResolveOutputTypeThroughIntermediateInterface() {
+        Class<?> outputType = DagCompiler.resolveOutputType(ConcretePricingBuilder.class);
+        assertThat(outputType).isEqualTo(PricingResult.class);
+    }
 }

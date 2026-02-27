@@ -18,12 +18,12 @@ public record ApiDefinition(
     List<QueryParamDefinition> queryParams,
     List<HeaderParamDefinition> headerParams,
     String serviceName,
-    String servicePath,
+    String serviceRoute,
     ProxyPathTemplate servicePathTemplate,
     ValidationPlan validationPlan
 ) {
     public boolean isPassthrough() {
-        return serviceName != null && servicePath != null;
+        return serviceName != null && serviceRoute != null;
     }
 
     public RouteDefinition toRoute() {

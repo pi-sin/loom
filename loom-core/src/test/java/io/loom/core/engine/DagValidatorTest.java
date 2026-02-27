@@ -2,9 +2,9 @@ package io.loom.core.engine;
 
 import io.loom.core.builder.BuilderContext;
 import io.loom.core.builder.LoomBuilder;
-import io.loom.core.exception.CycleDetectedException;
+import io.loom.core.exception.LoomCycleDetectedException;
 import io.loom.core.exception.LoomException;
-import io.loom.core.exception.UnknownDependencyException;
+import io.loom.core.exception.LoomUnknownDependencyException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -60,7 +60,7 @@ class DagValidatorTest {
         nodes.put(BuilderB.class, new DagNode(BuilderB.class, Set.of(BuilderA.class), true, 5000, OutputB.class));
 
         assertThatThrownBy(() -> validator.validate(nodes, OutputA.class))
-                .isInstanceOf(CycleDetectedException.class);
+                .isInstanceOf(LoomCycleDetectedException.class);
     }
 
     @Test
@@ -69,7 +69,7 @@ class DagValidatorTest {
         nodes.put(BuilderA.class, new DagNode(BuilderA.class, Set.of(BuilderC.class), true, 5000, OutputA.class));
 
         assertThatThrownBy(() -> validator.validate(nodes, OutputA.class))
-                .isInstanceOf(UnknownDependencyException.class);
+                .isInstanceOf(LoomUnknownDependencyException.class);
     }
 
     @Test

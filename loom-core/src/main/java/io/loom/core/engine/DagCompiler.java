@@ -79,6 +79,18 @@ public class DagCompiler {
             }
         }
 
+        // Check intermediate interfaces that extend LoomBuilder
+        for (Type iface : interfaces) {
+            Class<?> rawIface = (iface instanceof ParameterizedType pt)
+                    ? (Class<?>) pt.getRawType() : (iface instanceof Class<?> c ? c : null);
+            if (rawIface != null && LoomBuilder.class.isAssignableFrom(rawIface)
+                    && rawIface != LoomBuilder.class) {
+                @SuppressWarnings("unchecked")
+                Class<? extends LoomBuilder<?>> ifaceBuilder = (Class<? extends LoomBuilder<?>>) rawIface;
+                return resolveOutputType(ifaceBuilder);
+            }
+        }
+
         // Check superclass chain
         Class<?> superClass = builderClass.getSuperclass();
         if (superClass != null && LoomBuilder.class.isAssignableFrom(superClass)) {

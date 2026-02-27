@@ -16,8 +16,9 @@ public class FetchRecommendationsBuilder implements LoomBuilder<List<Recommendat
     public List<Recommendation> build(BuilderContext context) {
         ProductInfo product = context.getDependency(ProductInfo.class);
         PricingInfo pricing = context.getDependency(PricingInfo.class);
-        // In a real app: context.service("recommendation-service")
-        //   .get("/recommendations?category=" + product.category() + "&priceRange=" + pricing.price(), ...)
+        // In a real app: context.service("recommendation-service").route("get-recommendations")
+        //   .queryParam("category", product.category())
+        //   .queryParam("priceRange", pricing.price().toString()).get(...)
         return List.of(
                 new Recommendation("101", "Super Widget", "Similar in " + product.category()),
                 new Recommendation("202", "Widget Accessory Kit", "Frequently bought together")

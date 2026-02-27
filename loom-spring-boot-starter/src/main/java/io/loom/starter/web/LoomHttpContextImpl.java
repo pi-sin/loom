@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -16,7 +17,7 @@ public class LoomHttpContextImpl implements LoomHttpContext {
     private final HttpServletResponse response;
     private final JsonCodec jsonCodec;
     private final Map<String, String> pathVariables;
-    private final String requestId;
+    private final long maxRequestBodySize;
     private final byte[] rawBody;
 
     private final Map<String, List<String>> cachedHeaders;
@@ -28,15 +29,18 @@ public class LoomHttpContextImpl implements LoomHttpContext {
     private Map<String, List<String>> cachedQueryParams;
     private Object cachedParsedBody;
 
+    private static final Set<String> BODY_METHODS = Set.of("POST", "PUT", "PATCH");
+
     public LoomHttpContextImpl(HttpServletRequest request, HttpServletResponse response,
                                JsonCodec jsonCodec, Map<String, String> pathVariables,
-                               String requestId) {
+                               long maxRequestBodySize) {
         this.request = request;
         this.response = response;
         this.jsonCodec = jsonCodec;
         this.pathVariables = pathVariables != null ? pathVariables : Map.of();
-        this.requestId = requestId;
-        this.rawBody = readBody(request);
+        this.maxRequestBodySize = maxRequestBodySize;
+        this.rawBody = BODY_METHODS.contains(request.getMethod().toUpperCase())
+                ? readBody(request) : new byte[0];
         this.cachedHeaders = buildHeaders(request);
     }
 
@@ -45,16 +49,37 @@ public class LoomHttpContextImpl implements LoomHttpContext {
         Enumeration<String> names = request.getHeaderNames();
         while (names.hasMoreElements()) {
             String name = names.nextElement();
-            headers.put(name, Collections.list(request.getHeaders(name)));
+            Enumeration<String> values = request.getHeaders(name);
+            String first = values.nextElement();
+            if (!values.hasMoreElements()) {
+                headers.put(name, List.of(first));
+            } else {
+                List<String> list = new ArrayList<>();
+                list.add(first);
+                do { list.add(values.nextElement()); } while (values.hasMoreElements());
+                headers.put(name, List.copyOf(list));
+            }
         }
         return Collections.unmodifiableMap(headers);
     }
 
     private byte[] readBody(HttpServletRequest request) {
+        long contentLength = request.getContentLengthLong();
+        if (contentLength > maxRequestBodySize) {
+            throw new LoomException("Request body too large: " + contentLength
+                    + " bytes exceeds limit of " + maxRequestBodySize + " bytes");
+        }
         try {
-            return request.getInputStream().readAllBytes();
+            int limit = (int) Math.min(maxRequestBodySize + 1, Integer.MAX_VALUE);
+            InputStream inputStream = request.getInputStream();
+            byte[] body = inputStream.readNBytes(limit);
+            if (body.length > maxRequestBodySize) {
+                throw new LoomException("Request body too large: " + body.length
+                        + " bytes exceeds limit of " + maxRequestBodySize + " bytes");
+            }
+            return body;
         } catch (IOException e) {
-            return new byte[0];
+            throw new LoomException("Failed to read request body", e);
         }
     }
 
@@ -193,11 +218,6 @@ public class LoomHttpContextImpl implements LoomHttpContext {
     @Override
     public Object getResponseBody() {
         return responseBody;
-    }
-
-    @Override
-    public String getRequestId() {
-        return requestId;
     }
 
     public HttpServletRequest getServletRequest() {

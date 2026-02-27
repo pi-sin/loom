@@ -3,9 +3,10 @@ package io.loom.starter.context;
 import io.loom.core.builder.BuilderContext;
 import io.loom.core.builder.LoomBuilder;
 import io.loom.core.codec.JsonCodec;
-import io.loom.core.exception.DependencyResolutionException;
+import io.loom.core.exception.LoomDependencyResolutionException;
 import io.loom.core.exception.LoomException;
-import io.loom.core.service.ServiceClient;
+import io.loom.core.service.ServiceAccessor;
+import io.loom.starter.service.ServiceAccessorImpl;
 import io.loom.starter.service.ServiceClientRegistry;
 
 import java.util.*;
@@ -21,7 +22,6 @@ public class SpringBuilderContext implements BuilderContext {
     private final byte[] rawRequestBody;
     private final JsonCodec jsonCodec;
     private final ServiceClientRegistry serviceRegistry;
-    private final String requestId;
     private final Object cachedRequestBody;
 
     private final Map<String, String> unmodPathVars;
@@ -29,6 +29,8 @@ public class SpringBuilderContext implements BuilderContext {
     private final Map<String, List<String>> unmodHeaders;
 
     private final ConcurrentHashMap<String, Object> attributes = new ConcurrentHashMap<>();
+    private static final Object NULL_SENTINEL = new Object();
+
     private final ConcurrentHashMap<Class<?>, Object> resultsByType = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Class<? extends LoomBuilder<?>>, Object> resultsByBuilder = new ConcurrentHashMap<>();
 
@@ -39,7 +41,6 @@ public class SpringBuilderContext implements BuilderContext {
                                 byte[] rawRequestBody,
                                 JsonCodec jsonCodec,
                                 ServiceClientRegistry serviceRegistry,
-                                String requestId,
                                 Object cachedRequestBody) {
         this.httpMethod = httpMethod;
         this.requestPath = requestPath;
@@ -49,11 +50,10 @@ public class SpringBuilderContext implements BuilderContext {
         this.rawRequestBody = rawRequestBody;
         this.jsonCodec = jsonCodec;
         this.serviceRegistry = serviceRegistry;
-        this.requestId = requestId;
         this.cachedRequestBody = cachedRequestBody;
-        this.unmodPathVars = Collections.unmodifiableMap(this.pathVariables);
-        this.unmodQueryParams = Collections.unmodifiableMap(this.queryParams);
-        this.unmodHeaders = Collections.unmodifiableMap(this.headers);
+        this.unmodPathVars = this.pathVariables;
+        this.unmodQueryParams = this.queryParams;
+        this.unmodHeaders = this.headers;
     }
 
     @Override
@@ -124,12 +124,12 @@ public class SpringBuilderContext implements BuilderContext {
     public <T> T getDependency(Class<T> outputType) {
         Object result = resultsByType.get(outputType);
         if (result == null) {
-            throw new DependencyResolutionException(
+            throw new LoomDependencyResolutionException(
                     outputType.getSimpleName(),
                     resultsByType.keySet().stream().map(Class::getSimpleName).toList(),
                     resultsByBuilder.keySet().stream().map(Class::getSimpleName).toList());
         }
-        return (T) result;
+        return result == NULL_SENTINEL ? null : (T) result;
     }
 
     @Override
@@ -137,29 +137,31 @@ public class SpringBuilderContext implements BuilderContext {
     public <T> T getResultOf(Class<? extends LoomBuilder<T>> builderClass) {
         Object result = resultsByBuilder.get(builderClass);
         if (result == null) {
-            throw new DependencyResolutionException(
+            throw new LoomDependencyResolutionException(
                     "builder:" + builderClass.getSimpleName(),
                     resultsByType.keySet().stream().map(Class::getSimpleName).toList(),
                     resultsByBuilder.keySet().stream().map(Class::getSimpleName).toList());
         }
-        return (T) result;
+        return result == NULL_SENTINEL ? null : (T) result;
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public <T> Optional<T> getOptionalDependency(Class<T> outputType) {
-        return Optional.ofNullable((T) resultsByType.get(outputType));
+        Object value = resultsByType.get(outputType);
+        return value == null ? Optional.empty() : Optional.ofNullable(value == NULL_SENTINEL ? null : (T) value);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public <T> Optional<T> getOptionalResultOf(Class<? extends LoomBuilder<T>> builderClass) {
-        return Optional.ofNullable((T) resultsByBuilder.get(builderClass));
+        Object value = resultsByBuilder.get(builderClass);
+        return value == null ? Optional.empty() : Optional.ofNullable(value == NULL_SENTINEL ? null : (T) value);
     }
 
     @Override
-    public ServiceClient service(String name) {
-        return serviceRegistry.getClient(name);
+    public ServiceAccessor service(String name) {
+        return new ServiceAccessorImpl(name, serviceRegistry, pathVariables, queryParams);
     }
 
     @Override
@@ -178,14 +180,10 @@ public class SpringBuilderContext implements BuilderContext {
         return Collections.unmodifiableMap(attributes);
     }
 
-    @Override
-    public String getRequestId() {
-        return requestId;
-    }
-
     // Methods for the executor to store results
     public void storeResult(Class<? extends LoomBuilder<?>> builderClass, Class<?> outputType, Object result) {
-        resultsByBuilder.put(builderClass, result);
-        resultsByType.put(outputType, result);
+        Object stored = result != null ? result : NULL_SENTINEL;
+        resultsByBuilder.put(builderClass, stored);
+        resultsByType.put(outputType, stored);
     }
 }
