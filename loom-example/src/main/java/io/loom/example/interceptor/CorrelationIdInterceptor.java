@@ -5,6 +5,8 @@ import io.loom.core.interceptor.LoomHttpContext;
 import io.loom.core.interceptor.LoomInterceptor;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 @Component
 public class CorrelationIdInterceptor implements LoomInterceptor {
 
@@ -12,7 +14,7 @@ public class CorrelationIdInterceptor implements LoomInterceptor {
     public void handle(LoomHttpContext context, InterceptorChain chain) {
         String correlationId = context.getHeader("X-Correlation-ID");
         if (correlationId == null || correlationId.isBlank()) {
-            correlationId = java.util.UUID.randomUUID().toString();
+            correlationId = UUID.randomUUID().toString();
         }
         context.setAttribute("correlationId", correlationId);
         context.setResponseHeader("X-Correlation-ID", correlationId);

@@ -14,6 +14,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.net.http.HttpClient;
+import java.util.concurrent.Executors;
 import java.time.Duration;
 import java.util.Map;
 
@@ -34,7 +35,7 @@ public class RestServiceClient implements ServiceClient {
 
         var httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(connectTimeoutMs))
-                .executor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor())
+                .executor(Executors.newVirtualThreadPerTaskExecutor())
                 .build();
         var requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMs));

@@ -14,6 +14,7 @@ import io.loom.core.validation.RequestValidator;
 import io.loom.core.validation.ValidationPlan;
 import io.loom.starter.service.ServiceClientRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.context.ApplicationContext;
 
 import java.util.Arrays;
@@ -46,7 +47,7 @@ public class LoomAnnotationScanner {
         Map<String, Object> beans = applicationContext.getBeansWithAnnotation(LoomApi.class);
 
         for (Map.Entry<String, Object> entry : beans.entrySet()) {
-            Class<?> apiClass = org.springframework.aop.support.AopUtils.getTargetClass(entry.getValue());
+            Class<?> apiClass = AopUtils.getTargetClass(entry.getValue());
             LoomApi api = apiClass.getAnnotation(LoomApi.class);
             LoomGraph graph = apiClass.getAnnotation(LoomGraph.class);
             LoomProxy proxy = apiClass.getAnnotation(LoomProxy.class);
