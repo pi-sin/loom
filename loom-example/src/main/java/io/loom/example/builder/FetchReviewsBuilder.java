@@ -13,7 +13,8 @@ public class FetchReviewsBuilder implements LoomBuilder<List<Review>> {
     @Override
     public List<Review> build(BuilderContext context) {
         String id = context.getPathVariable("id");
-        // In a real app: return context.service("review-service").get("/reviews?productId=" + id, ...);
+        // In a real app: return context.service("review-service").route("get-reviews")
+        //   .queryParam("productId", id).get(...);
         return List.of(
                 new Review("Alice", 5, "Excellent product!"),
                 new Review("Bob", 4, "Good quality, fast delivery"),

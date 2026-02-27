@@ -1,10 +1,12 @@
 package io.loom.core.model;
 
+import io.loom.core.exception.LoomException;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ProxyPathTemplateTest {
 
@@ -42,9 +44,20 @@ class ProxyPathTemplateTest {
     }
 
     @Test
-    void missingVariableValue() {
+    void missingVariableValueThrowsException() {
         ProxyPathTemplate t = ProxyPathTemplate.compile("/orders/{id}");
-        assertThat(t.resolve(Map.of())).isEqualTo("/orders/");
+        assertThatThrownBy(() -> t.resolve(Map.of()))
+                .isInstanceOf(LoomException.class)
+                .hasMessageContaining("{id}")
+                .hasMessageContaining("/orders/{id}");
+    }
+
+    @Test
+    void missingOneOfMultipleVariablesThrowsException() {
+        ProxyPathTemplate t = ProxyPathTemplate.compile("/users/{uid}/orders/{oid}");
+        assertThatThrownBy(() -> t.resolve(Map.of("uid", "1")))
+                .isInstanceOf(LoomException.class)
+                .hasMessageContaining("{oid}");
     }
 
     @Test

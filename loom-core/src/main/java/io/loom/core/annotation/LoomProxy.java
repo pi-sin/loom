@@ -6,6 +6,6 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 public @interface LoomProxy {
-    String name();
-    String path();
+    String service();
+    String route();
 }

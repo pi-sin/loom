@@ -16,8 +16,8 @@ public class RequestLoggingInterceptor implements LoomInterceptor {
     @Override
     public void handle(LoomHttpContext context, InterceptorChain chain) {
         long start = System.currentTimeMillis();
-        log.info("[Loom] >> {} {} (requestId={})",
-                context.getHttpMethod(), context.getRequestPath(), context.getRequestId());
+        log.info("[Loom] >> {} {}",
+                context.getHttpMethod(), context.getRequestPath());
 
         chain.next(context);
 

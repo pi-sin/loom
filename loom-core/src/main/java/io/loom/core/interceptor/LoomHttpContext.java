@@ -25,6 +25,4 @@ public interface LoomHttpContext {
     void setResponseBody(Object body);
     int getResponseStatus();
     Object getResponseBody();
-
-    String getRequestId();
 }

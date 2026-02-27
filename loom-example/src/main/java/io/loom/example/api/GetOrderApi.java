@@ -17,5 +17,5 @@ import io.loom.example.interceptor.ApiKeyInterceptor;
              @LoomQueryParam(name = "expand", description = "Comma-separated fields to expand")
          },
          headers = {@LoomHeaderParam(name = "X-API-Key", required = true, description = "API key")})
-@LoomProxy(name = "order-service", path = "/internal/orders/{orderId}")
+@LoomProxy(service = "order-service", route = "get-order")
 public class GetOrderApi {}

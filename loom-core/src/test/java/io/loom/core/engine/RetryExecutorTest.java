@@ -1,5 +1,6 @@
 package io.loom.core.engine;
 
+import io.loom.core.exception.LoomServiceClientException;
 import io.loom.core.service.RetryConfig;
 import org.junit.jupiter.api.Test;
 
@@ -34,7 +35,21 @@ class RetryExecutorTest {
     }
 
     @Test
-    void shouldThrowAfterMaxAttempts() {
+    void shouldRethrowRuntimeExceptionSubclassDirectly() {
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        assertThatThrownBy(() -> retryExecutor.execute(() -> {
+            attempts.incrementAndGet();
+            throw new IllegalStateException("specific error");
+        }, new RetryConfig(3, 10, 1.0, 100), "test"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("specific error");
+
+        assertThat(attempts.get()).isEqualTo(3);
+    }
+
+    @Test
+    void shouldWrapCheckedExceptionAfterMaxAttempts() {
         AtomicInteger attempts = new AtomicInteger(0);
 
         assertThatThrownBy(() -> retryExecutor.execute(() -> {
@@ -42,7 +57,7 @@ class RetryExecutorTest {
             throw new RuntimeException("always fail");
         }, new RetryConfig(3, 10, 1.0, 100), "test"))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("All 3 attempts failed");
+                .hasMessageContaining("always fail");
 
         assertThat(attempts.get()).isEqualTo(3);
     }
@@ -55,7 +70,8 @@ class RetryExecutorTest {
             attempts.incrementAndGet();
             throw new RuntimeException("fail");
         }, RetryConfig.noRetry(), "test"))
-                .isInstanceOf(RuntimeException.class);
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("fail");
 
         assertThat(attempts.get()).isEqualTo(1);
     }
@@ -80,5 +96,37 @@ class RetryExecutorTest {
 
         long delay = retryExecutor.calculateDelay(5, config);
         assertThat(delay).isLessThanOrEqualTo(2000);
+    }
+
+    @Test
+    void shouldPreserveLoomServiceClientExceptionThroughRetry() {
+        AtomicInteger attempts = new AtomicInteger(0);
+        Throwable rootCause = new RuntimeException("connection refused");
+
+        assertThatThrownBy(() -> retryExecutor.execute(() -> {
+            attempts.incrementAndGet();
+            throw new LoomServiceClientException("payment-svc", 503, "Bad Gateway", rootCause);
+        }, new RetryConfig(3, 10, 1.0, 100), "payment-call"))
+                .isInstanceOf(LoomServiceClientException.class)
+                .satisfies(ex -> {
+                    LoomServiceClientException sce = (LoomServiceClientException) ex;
+                    assertThat(sce.getServiceName()).isEqualTo("payment-svc");
+                    assertThat(sce.getStatusCode()).isEqualTo(503);
+                    assertThat(sce.getCause()).isSameAs(rootCause);
+                });
+
+        assertThat(attempts.get()).isEqualTo(3);
+    }
+
+    @Test
+    void shouldPreserveCauseChainThroughRetry() {
+        Throwable rootCause = new IllegalStateException("underlying issue");
+        RuntimeException wrapper = new RuntimeException("wrapped error", rootCause);
+
+        assertThatThrownBy(() -> retryExecutor.execute(() -> {
+            throw wrapper;
+        }, new RetryConfig(2, 10, 1.0, 100), "test-op"))
+                .isSameAs(wrapper)
+                .hasCause(rootCause);
     }
 }

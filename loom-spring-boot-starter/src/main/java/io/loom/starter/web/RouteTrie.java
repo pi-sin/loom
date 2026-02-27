@@ -1,5 +1,6 @@
 package io.loom.starter.web;
 
+import io.loom.core.exception.LoomException;
 import io.loom.core.model.ApiDefinition;
 
 import java.util.HashMap;
@@ -30,24 +31,29 @@ public class RouteTrie {
                 String paramName = segment.substring(1, segment.length() - 1);
                 if (current.paramChild == null) {
                     current.paramChild = new TrieNode();
+                    current.paramChild.paramName = paramName;
+                } else if (!current.paramChild.paramName.equals(paramName)) {
+                    throw new LoomException("Conflicting path variable names at same position: '"
+                            + current.paramChild.paramName + "' vs '" + paramName
+                            + "' in route " + api.path());
                 }
-                current.paramChild.paramName = paramName;
                 current = current.paramChild;
             } else {
                 current = current.literalChildren.computeIfAbsent(segment, k -> new TrieNode());
             }
+        }
+        if (current.api != null) {
+            throw new LoomException("Duplicate route: " + api.method() + " " + api.path());
         }
         current.api = api;
     }
 
     public RouteMatch find(String method, String path) {
         TrieNode root = methodRoots.get(method.toUpperCase());
-        if (root == null) {
-            return null;
-        }
+        if (root == null) return null;
 
         String[] segments = splitPath(path);
-        Map<String, String> pathVariables = new LinkedHashMap<>();
+        Map<String, String> pathVariables = null;
         TrieNode current = root;
 
         for (String segment : segments) {
@@ -56,6 +62,7 @@ public class RouteTrie {
             if (literal != null) {
                 current = literal;
             } else if (current.paramChild != null) {
+                if (pathVariables == null) pathVariables = new LinkedHashMap<>();
                 pathVariables.put(current.paramChild.paramName, segment);
                 current = current.paramChild;
             } else {
@@ -66,7 +73,7 @@ public class RouteTrie {
         if (current.api == null) {
             return null;
         }
-        return new RouteMatch(current.api, pathVariables);
+        return new RouteMatch(current.api, pathVariables != null ? pathVariables : Map.of());
     }
 
     private static final String[] EMPTY = new String[0];

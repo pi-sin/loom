@@ -7,5 +7,5 @@ import io.loom.core.annotation.LoomProxy;
          path = "/api/health",
          summary = "Health check",
          tags = {"Infrastructure"})
-@LoomProxy(name = "health-service", path = "/internal/health")
+@LoomProxy(service = "health-service", route = "health-check")
 public class HealthCheckApi {}

@@ -30,7 +30,7 @@ cd loom-example && mvn spring-boot:run
 
 Four Maven modules with a strict dependency hierarchy:
 
-- **loom-core** — Pure Java, zero Spring dependencies. Contains annotations (`@LoomApi`, `@LoomGraph`, `@Node`, `@LoomProxy`), core interfaces (`LoomBuilder<O>`, `BuilderContext`, `LoomInterceptor`, `ServiceClient`), the DAG engine (`DagCompiler`, `DagValidator`, `DagExecutor`), and the `JsonCodec`/`DslJsonCodec` JSON abstraction.
+- **loom-core** — Pure Java, zero Spring dependencies. Contains annotations (`@LoomApi`, `@LoomGraph`, `@Node`, `@LoomProxy`), core interfaces (`LoomBuilder<O>`, `BuilderContext`, `LoomInterceptor`, `ServiceClient`, `ServiceAccessor`, `RouteInvoker`), the DAG engine (`DagCompiler`, `DagValidator`, `DagExecutor`), config records (`ServiceConfig`, `RouteConfig`, `RetryConfig`), and the `JsonCodec`/`DslJsonCodec` JSON abstraction.
 
 - **loom-spring-boot-starter** — Spring Boot auto-configuration layer. Wires core engine into Spring's HTTP dispatch via custom `LoomHandlerMapping` → `LoomHandlerAdapter` → `LoomRequestHandler`. Handles classpath scanning (`LoomAnnotationScanner`), service client management (`RestServiceClient`), and interceptor chains.
 
@@ -52,7 +52,9 @@ Four Maven modules with a strict dependency hierarchy:
 
 **JSON serialization:** All JSON reading/writing goes through the `JsonCodec` interface (`io.loom.core.codec`), implemented by `DslJsonCodec`. This covers both Loom's direct response writing and Spring `RestClient` service calls (via `DslJsonHttpMessageConverter`).
 
-**Proxy forwarding:** Path variables are resolved in `@LoomProxy.path()` via pre-compiled `ProxyPathTemplate` (zero per-request scanning). Query string is forwarded raw from the servlet request. Headers are forwarded (minus `Host`/`Content-Length`). Request body is forwarded as raw bytes for POST/PUT/PATCH.
+**Route-based service invocation (Kong-style routes):** Upstream service routes are defined in YAML config under `loom.services.<name>.routes.<route-name>` with `path`, `method`, and optional timeout/retry overrides. Builders use a fluent API: `context.service("svc").route("route-name").get(Type.class)`. Path variables and query params from the incoming request are auto-forwarded; explicit `.pathVar()` / `.queryParam()` overrides take precedence. Route path templates are pre-compiled at startup via `ProxyPathTemplate`.
+
+**Proxy forwarding:** `@LoomProxy(service = "svc", route = "route-name")` references a named route from config. Path variables are resolved via pre-compiled `ProxyPathTemplate` (zero per-request scanning). Query string is forwarded raw from the servlet request. Headers are forwarded (minus `Host`/`Content-Length`). Request body is forwarded as raw bytes for POST/PUT/PATCH. Route-level timeout/retry overrides create dedicated `RestServiceClient` instances only when needed; routes sharing service defaults share the same client.
 
 **Interceptor → builder communication:** Interceptors set attributes via `ctx.setAttribute()`, builders read them via `ctx.getAttribute()`.
 
@@ -75,8 +77,16 @@ Four Maven modules with a strict dependency hierarchy:
 ## Configuration
 
 Loom-specific config lives under `loom:` prefix in application.yml. Key properties:
-- `loom.services.<name>.base-url` — service URL
+- `loom.services.<name>.url` — service base URL
+- `loom.services.<name>.connect-timeout-ms` — connection timeout (default: 5000)
+- `loom.services.<name>.read-timeout-ms` — read timeout (default: 30000)
 - `loom.services.<name>.retry.*` — retry config (max-attempts, initial-delay-ms, multiplier, max-delay-ms)
+- `loom.services.<name>.routes.<route-name>.path` — upstream path template (e.g. `/products/{id}`)
+- `loom.services.<name>.routes.<route-name>.method` — HTTP method (default: GET)
+- `loom.services.<name>.routes.<route-name>.connect-timeout-ms` — route-level timeout override (-1 = inherit)
+- `loom.services.<name>.routes.<route-name>.read-timeout-ms` — route-level timeout override (-1 = inherit)
+- `loom.services.<name>.routes.<route-name>.retry.*` — route-level retry override (null = inherit)
+- `loom.max-request-body-size` — max request body in bytes (default: 10485760 / 10MB)
 - `loom.swagger.enabled` — enable OpenAPI docs (default: true)
 - `loom.ui.enabled` — enable DAG visualization (default: true)
 - `loom.basePackages` — custom package scan paths
@@ -89,7 +99,11 @@ Tests exist in `loom-core` and `loom-spring-boot-starter`:
 - `loom-core/src/test/.../engine/DagValidatorTest.java` — cycle detection, terminal node detection
 - `loom-core/src/test/.../engine/RetryExecutorTest.java` — exponential backoff with jitter
 - `loom-core/src/test/.../codec/DslJsonCodecTest.java` — dsl-json codec round-trip tests
+- `loom-core/src/test/.../service/RouteConfigTest.java` — route config timeout detection
+- `loom-core/src/test/.../service/ServiceConfigTest.java` — effective timeout/retry resolution
 - `loom-spring-boot-starter/src/test/.../web/PathMatcherTest.java` — URL path matching
+- `loom-spring-boot-starter/src/test/.../service/RouteInvokerImplTest.java` — fluent route invoker with auto-forwarding
+- `loom-spring-boot-starter/src/test/.../service/ServiceClientRegistryTest.java` — route client registration/lookup
 
 ## Code Standards
 
@@ -110,6 +124,7 @@ Tests exist in `loom-core` and `loom-spring-boot-starter`:
 - Use proper exception handling and logging
 - Use proper resource management
 - The framework should be easy to implement and should be extensible
+- Update CLAUDE.md and README.md for relevant changes and documentation
 
 ### Code Comments
 

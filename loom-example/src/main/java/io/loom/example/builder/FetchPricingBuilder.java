@@ -22,7 +22,8 @@ public class FetchPricingBuilder implements LoomBuilder<PricingInfo> {
             currency = "USD";
         }
 
-        // In a real app: return context.service("pricing-service").get("/pricing/" + product.id(), PricingInfo.class);
+        // In a real app: return context.service("pricing-service").route("get-pricing")
+        //   .pathVar("id", product.id()).get(PricingInfo.class);
         return new PricingInfo(new BigDecimal("49.99"), currency, new BigDecimal("5.00"));
     }
 }

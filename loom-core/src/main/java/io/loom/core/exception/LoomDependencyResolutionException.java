@@ -5,7 +5,7 @@ import java.util.List;
 import lombok.Getter;
 
 @Getter
-public class DependencyResolutionException extends LoomException {
+public class LoomDependencyResolutionException extends LoomException {
 
     private final String requestedType;
 
@@ -20,7 +20,7 @@ public class DependencyResolutionException extends LoomException {
                 + "Possible causes: dependent builder failed, timed out, or dependency not declared in @LoomGraph.";
     }
 
-    public DependencyResolutionException(String requestedType, List<String> availableTypes,
+    public LoomDependencyResolutionException(String requestedType, List<String> availableTypes,
                                          List<String> completedBuilders) {
         super(buildMessage(requestedType, availableTypes, completedBuilders));
         this.requestedType = requestedType;

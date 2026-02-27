@@ -1,5 +1,6 @@
 package io.loom.starter.web;
 
+import io.loom.core.exception.LoomException;
 import io.loom.core.model.ApiDefinition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -8,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RouteTrieTest {
 
@@ -127,5 +129,58 @@ class RouteTrieTest {
         assertThat(RouteTrie.splitPath("/api")).containsExactly("api");
         assertThat(RouteTrie.splitPath("/api/")).containsExactly("api");
         assertThat(RouteTrie.splitPath("api/health")).containsExactly("api", "health");
+    }
+
+    @Test
+    void staticRouteReturnsEmptyMapNotNull() {
+        trie.insert(api("GET", "/api/health"));
+
+        RouteTrie.RouteMatch match = trie.find("GET", "/api/health");
+
+        assertThat(match).isNotNull();
+        assertThat(match.pathVariables()).isNotNull();
+        assertThat(match.pathVariables()).isEmpty();
+    }
+
+    @Test
+    void conflictingParamNamesThrows() {
+        trie.insert(api("GET", "/api/users/{userId}/profile"));
+
+        assertThatThrownBy(() -> trie.insert(api("GET", "/api/users/{id}/orders")))
+                .isInstanceOf(LoomException.class)
+                .hasMessageContaining("Conflicting path variable names")
+                .hasMessageContaining("userId")
+                .hasMessageContaining("id");
+    }
+
+    @Test
+    void consistentParamNamesSucceeds() {
+        trie.insert(api("GET", "/api/users/{userId}/profile"));
+        trie.insert(api("GET", "/api/users/{userId}/orders"));
+
+        assertThat(trie.find("GET", "/api/users/1/profile")).isNotNull();
+        assertThat(trie.find("GET", "/api/users/1/orders")).isNotNull();
+    }
+
+    @Test
+    void duplicateRouteThrows() {
+        trie.insert(api("GET", "/api/health"));
+
+        assertThatThrownBy(() -> trie.insert(api("GET", "/api/health")))
+                .isInstanceOf(LoomException.class)
+                .hasMessageContaining("Duplicate route")
+                .hasMessageContaining("GET")
+                .hasMessageContaining("/api/health");
+    }
+
+    @Test
+    void staticRoutePathVariablesAreImmutable() {
+        trie.insert(api("GET", "/api/health"));
+
+        RouteTrie.RouteMatch match = trie.find("GET", "/api/health");
+
+        assertThat(match).isNotNull();
+        assertThatThrownBy(() -> match.pathVariables().put("injected", "bad"))
+                .isInstanceOf(UnsupportedOperationException.class);
     }
 }

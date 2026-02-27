@@ -45,7 +45,7 @@ public class LoomUiController {
                         api.responseType() != null && api.responseType() != void.class
                                 ? api.responseType().getSimpleName() : null,
                         List.of(new NodeDto("passthrough",
-                                api.serviceName() + api.servicePath(),
+                                api.serviceName() + "." + api.serviceRoute(),
                                 true, 0, true)),
                         List.of(),
                         "passthrough",

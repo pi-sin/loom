@@ -1,30 +1,15 @@
 package io.loom.core.exception;
 
+import lombok.experimental.StandardException;
+
+@StandardException
 public class LoomException extends RuntimeException {
 
-    private String requestId;
     private String apiRoute;
-
-    public LoomException(String message) {
-        super(message);
-    }
-
-    public LoomException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public LoomException withRequestId(String id) {
-        this.requestId = id;
-        return this;
-    }
 
     public LoomException withApiRoute(String route) {
         this.apiRoute = route;
         return this;
-    }
-
-    public String getRequestId() {
-        return requestId;
     }
 
     public String getApiRoute() {
@@ -35,7 +20,6 @@ public class LoomException extends RuntimeException {
     public String getMessage() {
         String base = super.getMessage();
         if (apiRoute != null) base += " [route=" + apiRoute + "]";
-        if (requestId != null) base += " [requestId=" + requestId + "]";
         return base;
     }
 }
