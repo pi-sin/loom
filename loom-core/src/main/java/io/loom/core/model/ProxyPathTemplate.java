@@ -2,6 +2,8 @@ package io.loom.core.model;
 
 import io.loom.core.exception.LoomException;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -96,7 +98,7 @@ public final class ProxyPathTemplate {
                     throw new LoomException(
                             "Missing path variable '{" + variables[i] + "}' in template: " + template);
                 }
-                sb.append(value);
+                sb.append(encodePathSegment(value));
             }
             sb.append(literals[variables.length]);
         }
@@ -108,5 +110,21 @@ public final class ProxyPathTemplate {
 
     public String template() {
         return template;
+    }
+
+    /**
+     * Percent-encodes a path variable value per RFC 3986.
+     * <p>
+     * Servlet containers URL-decode incoming path variables, so values like "foo/bar"
+     * arrive decoded. Without re-encoding, substituting them into the upstream URL
+     * breaks its structure (e.g. /users/foo/bar/orders instead of /users/foo%2Fbar/orders).
+     * This encodes reserved characters (/, ?, #, etc.) while leaving typical ID values
+     * (alphanumerics, hyphens, underscores) untouched.
+     * <p>
+     * Uses URLEncoder (application/x-www-form-urlencoded) then converts '+' back to '%20'
+     * for correct path-segment encoding.
+     */
+    private static String encodePathSegment(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
     }
 }

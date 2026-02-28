@@ -427,6 +427,27 @@ class LoomHandlerAdapterTest {
     }
 
     @Test
+    void passthroughPath_nullContentTypeNotSetOnResponse() throws Exception {
+        ServiceClient client = mock(ServiceClient.class);
+        when(serviceClientRegistry.getRouteClient("test-svc", "get-all")).thenReturn(client);
+        // Upstream returns null contentType (e.g. custom ServiceClient implementation)
+        ServiceResponse<byte[]> upstream = new ServiceResponse<>(
+                "data".getBytes(), 200, Map.of(), "data".getBytes(), null);
+        when(client.proxy(any(), any(), any(), any())).thenReturn(upstream);
+
+        MockHttpServletRequest request = createRequest("GET", "/api/proxy");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        LoomRequestHandler handler = passthroughHandler("GET", "/api/proxy", "test-svc", "get-all");
+
+        adapter.handle(request, response, handler);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        // Content-Type should not be set (avoids servlet container setting literal "null")
+        assertThat(response.getContentType()).isNull();
+        assertThat(response.getContentAsString()).isEqualTo("data");
+    }
+
+    @Test
     void passthroughPath_interceptorShortCircuitStillUsesJsonPath() throws Exception {
         LoomInterceptor shortCircuitInterceptor = new LoomInterceptor() {
             @Override

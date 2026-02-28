@@ -121,4 +121,46 @@ class ProxyPathTemplateTest {
         String second = t.resolve(Map.of(), null);
         assertThat(first).isSameAs(second);
     }
+
+    @Test
+    void pathVariableWithSpecialCharactersIsEncoded() {
+        ProxyPathTemplate t = ProxyPathTemplate.compile("/search/{query}");
+
+        // Spaces encoded as %20
+        assertThat(t.resolve(Map.of("query", "hello world")))
+                .isEqualTo("/search/hello%20world");
+
+        // Slash encoded as %2F
+        assertThat(t.resolve(Map.of("query", "a/b")))
+                .isEqualTo("/search/a%2Fb");
+
+        // Question mark encoded as %3F
+        assertThat(t.resolve(Map.of("query", "what?")))
+                .isEqualTo("/search/what%3F");
+
+        // Hash encoded as %23
+        assertThat(t.resolve(Map.of("query", "tag#1")))
+                .isEqualTo("/search/tag%231");
+
+        // Unicode encoded
+        assertThat(t.resolve(Map.of("query", "caf\u00e9")))
+                .isEqualTo("/search/caf%C3%A9");
+    }
+
+    @Test
+    void typicalPathVariablesPassThroughUnchanged() {
+        ProxyPathTemplate t = ProxyPathTemplate.compile("/users/{uid}/orders/{oid}");
+
+        // Numeric IDs
+        assertThat(t.resolve(Map.of("uid", "42", "oid", "100")))
+                .isEqualTo("/users/42/orders/100");
+
+        // UUIDs
+        assertThat(t.resolve(Map.of("uid", "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "oid", "99")))
+                .isEqualTo("/users/a1b2c3d4-e5f6-7890-abcd-ef1234567890/orders/99");
+
+        // Alphanumeric with hyphens and underscores
+        assertThat(t.resolve(Map.of("uid", "user_name-123", "oid", "order.v2")))
+                .isEqualTo("/users/user_name-123/orders/order.v2");
+    }
 }

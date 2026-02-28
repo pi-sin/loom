@@ -200,7 +200,9 @@ public class LoomHandlerAdapter implements HandlerAdapter {
             });
         }
 
-        response.setContentType(upstream.contentType());
+        if (upstream.contentType() != null) {
+            response.setContentType(upstream.contentType());
+        }
 
         if (upstream.rawBody() != null && upstream.rawBody().length > 0) {
             response.getOutputStream().write(upstream.rawBody());
