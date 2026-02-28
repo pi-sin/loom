@@ -108,7 +108,9 @@ public class DagExecutor {
 
             context.storeResult(node.builderClass(), node.outputType(), result);
 
-            log.debug("[Loom] Node '{}' completed successfully", node.name());
+            if (log.isDebugEnabled()) {
+                log.debug("[Loom] Node '{}' completed successfully", node.name());
+            }
             return BuilderResult.success(result);
         } catch (Exception e) {
             log.error("[Loom] Required builder '{}' failed: {}", node.name(), e.getMessage(), e);

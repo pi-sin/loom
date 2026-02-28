@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.net.http.HttpClient;
 import java.time.Duration;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +70,7 @@ public class RestServiceClient implements ServiceClient {
 
     @Override
     public <T> T get(String path, Class<T> responseType, Map<String, String> headers) {
+        String opName = name + " GET " + path;
         return retryExecutor.execute(() -> {
             try {
                 var spec = restClient.get().uri(path);
@@ -79,7 +81,7 @@ public class RestServiceClient implements ServiceClient {
             } catch (Exception e) {
                 throw new LoomServiceClientException(name, e.getMessage(), e);
             }
-        }, retryConfig, name + " GET " + path);
+        }, retryConfig, opName);
     }
 
     @Override
@@ -89,6 +91,7 @@ public class RestServiceClient implements ServiceClient {
 
     @Override
     public <T> T post(String path, Object body, Class<T> responseType, Map<String, String> headers) {
+        String opName = name + " POST " + path;
         return retryExecutor.execute(() -> {
             try {
                 var spec = restClient.post().uri(path);
@@ -102,7 +105,7 @@ public class RestServiceClient implements ServiceClient {
             } catch (Exception e) {
                 throw new LoomServiceClientException(name, e.getMessage(), e);
             }
-        }, retryConfig, name + " POST " + path);
+        }, retryConfig, opName);
     }
 
     @Override
@@ -112,6 +115,7 @@ public class RestServiceClient implements ServiceClient {
 
     @Override
     public <T> T put(String path, Object body, Class<T> responseType, Map<String, String> headers) {
+        String opName = name + " PUT " + path;
         return retryExecutor.execute(() -> {
             try {
                 var spec = restClient.put().uri(path);
@@ -125,7 +129,7 @@ public class RestServiceClient implements ServiceClient {
             } catch (Exception e) {
                 throw new LoomServiceClientException(name, e.getMessage(), e);
             }
-        }, retryConfig, name + " PUT " + path);
+        }, retryConfig, opName);
     }
 
     @Override
@@ -135,6 +139,7 @@ public class RestServiceClient implements ServiceClient {
 
     @Override
     public <T> T delete(String path, Class<T> responseType, Map<String, String> headers) {
+        String opName = name + " DELETE " + path;
         return retryExecutor.execute(() -> {
             try {
                 var spec = restClient.delete().uri(path);
@@ -145,7 +150,7 @@ public class RestServiceClient implements ServiceClient {
             } catch (Exception e) {
                 throw new LoomServiceClientException(name, e.getMessage(), e);
             }
-        }, retryConfig, name + " DELETE " + path);
+        }, retryConfig, opName);
     }
 
     @Override
@@ -155,6 +160,7 @@ public class RestServiceClient implements ServiceClient {
 
     @Override
     public <T> T patch(String path, Object body, Class<T> responseType, Map<String, String> headers) {
+        String opName = name + " PATCH " + path;
         return retryExecutor.execute(() -> {
             try {
                 var spec = restClient.patch().uri(path);
@@ -168,14 +174,16 @@ public class RestServiceClient implements ServiceClient {
             } catch (Exception e) {
                 throw new LoomServiceClientException(name, e.getMessage(), e);
             }
-        }, retryConfig, name + " PATCH " + path);
+        }, retryConfig, opName);
     }
 
     @Override
     public ServiceResponse<byte[]> proxy(String method, String path, byte[] body, Map<String, String> headers) {
+        HttpMethod httpMethod = HttpMethod.valueOf(method.toUpperCase());
+        String opName = name + " " + httpMethod.name() + " " + path;
         return retryExecutor.execute(() -> {
             try {
-                var spec = restClient.method(HttpMethod.valueOf(method.toUpperCase())).uri(path);
+                var spec = restClient.method(httpMethod).uri(path);
                 if (headers != null) {
                     headers.forEach(spec::header);
                 }
@@ -195,15 +203,17 @@ public class RestServiceClient implements ServiceClient {
             } catch (Exception e) {
                 throw new LoomServiceClientException(name, e.getMessage(), e);
             }
-        }, retryConfig, name + " " + method.toUpperCase() + " " + path);
+        }, retryConfig, opName);
     }
 
     @Override
     public <T> ServiceResponse<T> exchange(String method, String path, Object body,
                                             Class<T> responseType, Map<String, String> headers) {
+        HttpMethod httpMethod = HttpMethod.valueOf(method.toUpperCase());
+        String opName = name + " " + httpMethod.name() + " " + path;
         return retryExecutor.execute(() -> {
             try {
-                var spec = restClient.method(HttpMethod.valueOf(method.toUpperCase())).uri(path);
+                var spec = restClient.method(httpMethod).uri(path);
                 if (headers != null) {
                     headers.forEach(spec::header);
                 }
@@ -231,7 +241,7 @@ public class RestServiceClient implements ServiceClient {
             } catch (Exception e) {
                 throw new LoomServiceClientException(name, e.getMessage(), e);
             }
-        }, retryConfig, name + " " + method.toUpperCase() + " " + path);
+        }, retryConfig, opName);
     }
 
     private ServiceResponse<byte[]> buildByteResponse(ResponseEntity<byte[]> entity) {
@@ -268,8 +278,8 @@ public class RestServiceClient implements ServiceClient {
             return Map.of();
         }
         Map<String, List<String>> result = new LinkedHashMap<>();
-        httpHeaders.forEach((key, values) -> result.put(key, List.copyOf(values)));
-        return Map.copyOf(result);
+        httpHeaders.forEach((key, values) -> result.put(key, List.of(values.toArray(String[]::new))));
+        return Collections.unmodifiableMap(result);
     }
 
     private static String extractContentType(org.springframework.http.HttpHeaders httpHeaders) {

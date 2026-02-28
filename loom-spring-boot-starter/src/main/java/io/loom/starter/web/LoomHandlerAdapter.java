@@ -21,17 +21,22 @@ import org.springframework.web.servlet.ModelAndView;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static java.util.Locale.ROOT;
-
 @Slf4j
 public class LoomHandlerAdapter implements HandlerAdapter {
 
     // RFC 2616 §13.5.1 — hop-by-hop headers that proxies MUST NOT forward
-    private static final Set<String> HOP_BY_HOP_HEADERS = Set.of(
+    private static final String[] HOP_BY_HOP_HEADERS = {
             "host", "content-length", "connection", "keep-alive",
             "transfer-encoding", "te", "trailer", "upgrade",
             "proxy-authenticate", "proxy-authorization"
-    );
+    };
+
+    private static boolean isHopByHop(String name) {
+        for (String hop : HOP_BY_HOP_HEADERS) {
+            if (hop.equalsIgnoreCase(name)) return true;
+        }
+        return false;
+    }
 
     private final DagExecutor dagExecutor;
     private final InterceptorRegistry interceptorRegistry;
@@ -155,7 +160,7 @@ public class LoomHandlerAdapter implements HandlerAdapter {
 
                 Map<String, String> headers = new LinkedHashMap<>();
                 httpContext.getHeaders().forEach((k, v) -> {
-                    if (!HOP_BY_HOP_HEADERS.contains(k.toLowerCase(ROOT))) {
+                    if (!isHopByHop(k)) {
                         headers.put(k, v.size() == 1 ? v.get(0) : String.join(", ", v));
                     }
                 });
@@ -191,8 +196,7 @@ public class LoomHandlerAdapter implements HandlerAdapter {
         // Forward upstream response headers, filtering hop-by-hop and content-type (set explicitly below)
         if (upstream.headers() != null) {
             upstream.headers().forEach((name, values) -> {
-                String lower = name.toLowerCase(ROOT);
-                if (!HOP_BY_HOP_HEADERS.contains(lower) && !"content-type".equals(lower)) {
+                if (!isHopByHop(name) && !"content-type".equalsIgnoreCase(name)) {
                     for (String value : values) {
                         response.addHeader(name, value);
                     }
