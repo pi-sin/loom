@@ -24,4 +24,12 @@ public class LoomServiceClientException extends LoomException {
         this.serviceName = serviceName;
         this.statusCode = -1;
     }
+
+    /**
+     * Transport failures (statusCode == -1) and server errors (5xx) are retryable.
+     * Client errors (4xx) are never retryable — the same request will produce the same result.
+     */
+    public boolean isRetryable() {
+        return statusCode == -1 || statusCode >= 500;
+    }
 }

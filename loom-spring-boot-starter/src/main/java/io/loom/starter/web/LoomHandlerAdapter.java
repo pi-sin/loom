@@ -6,6 +6,7 @@ import io.loom.core.exception.LoomException;
 import io.loom.core.interceptor.LoomInterceptor;
 import io.loom.core.model.ApiDefinition;
 import io.loom.core.service.ServiceClient;
+import io.loom.core.service.ServiceResponse;
 import io.loom.core.validation.RequestValidator;
 import io.loom.starter.context.SpringBuilderContext;
 import io.loom.starter.registry.DefaultInterceptorChain;
@@ -80,17 +81,16 @@ public class LoomHandlerAdapter implements HandlerAdapter {
         }
 
         if (api.isPassthrough()) {
-            handlePassthrough(api, httpContext);
+            ServiceResponse<byte[]> upstream = handlePassthrough(api, httpContext);
+            if (upstream != null) {
+                writeProxyResponse(response, upstream);
+            } else {
+                // Interceptor short-circuited — fall back to JSON response path
+                writeJsonResponse(response, httpContext);
+            }
         } else {
             handleBuilder(api, httpContext, pathVars, cachedBody);
-        }
-
-        response.setStatus(httpContext.getResponseStatus());
-        response.setContentType("application/json");
-
-        Object responseBody = httpContext.getResponseBody();
-        if (responseBody != null) {
-            jsonCodec.writeValue(response.getOutputStream(), responseBody);
+            writeJsonResponse(response, httpContext);
         }
 
         return null;
@@ -139,8 +139,15 @@ public class LoomHandlerAdapter implements HandlerAdapter {
         }
     }
 
-    private void handlePassthrough(ApiDefinition api, LoomHttpContextImpl httpContext) {
+    /**
+     * Executes passthrough proxy via {@code ServiceClient.proxy()}.
+     * Returns the upstream {@link ServiceResponse} if the proxy call completed,
+     * or {@code null} if an interceptor short-circuited the chain.
+     */
+    private ServiceResponse<byte[]> handlePassthrough(ApiDefinition api, LoomHttpContextImpl httpContext) {
         List<LoomInterceptor> interceptors = interceptorRegistry.getInterceptors(api.interceptors());
+
+        var upstreamHolder = new AtomicReference<ServiceResponse<byte[]>>();
 
         Runnable serviceCall = () -> {
             try {
@@ -157,16 +164,13 @@ public class LoomHandlerAdapter implements HandlerAdapter {
                         httpContext.getPathVariablesRaw(), httpContext.getQueryString());
 
                 String method = httpContext.getHttpMethod().toUpperCase();
-                Object result = switch (method) {
-                    case "GET" -> client.get(resolvedPath, Object.class, headers);
-                    case "POST" -> client.post(resolvedPath, httpContext.getRawRequestBody(), Object.class, headers);
-                    case "PUT" -> client.put(resolvedPath, httpContext.getRawRequestBody(), Object.class, headers);
-                    case "DELETE" -> client.delete(resolvedPath, Object.class, headers);
-                    case "PATCH" -> client.patch(resolvedPath, httpContext.getRawRequestBody(), Object.class, headers);
-                    default -> throw new UnsupportedOperationException("Unsupported method: " + method);
+                byte[] requestBody = switch (method) {
+                    case "POST", "PUT", "PATCH" -> httpContext.getRawRequestBody();
+                    default -> null;
                 };
 
-                httpContext.setResponseBody(result);
+                ServiceResponse<byte[]> upstream = client.proxy(method, resolvedPath, requestBody, headers);
+                upstreamHolder.set(upstream);
             } catch (LoomException ex) {
                 throw (LoomException) ex.withApiRoute(api.method() + " " + api.path());
             } catch (Exception ex) {
@@ -177,6 +181,40 @@ public class LoomHandlerAdapter implements HandlerAdapter {
 
         DefaultInterceptorChain chain = new DefaultInterceptorChain(interceptors, serviceCall);
         chain.next(httpContext);
+
+        return upstreamHolder.get();
+    }
+
+    private void writeProxyResponse(HttpServletResponse response, ServiceResponse<byte[]> upstream) throws Exception {
+        response.setStatus(upstream.statusCode());
+
+        // Forward upstream response headers, filtering hop-by-hop and content-type (set explicitly below)
+        if (upstream.headers() != null) {
+            upstream.headers().forEach((name, values) -> {
+                String lower = name.toLowerCase(ROOT);
+                if (!HOP_BY_HOP_HEADERS.contains(lower) && !"content-type".equals(lower)) {
+                    for (String value : values) {
+                        response.addHeader(name, value);
+                    }
+                }
+            });
+        }
+
+        response.setContentType(upstream.contentType());
+
+        if (upstream.rawBody() != null && upstream.rawBody().length > 0) {
+            response.getOutputStream().write(upstream.rawBody());
+        }
+    }
+
+    private void writeJsonResponse(HttpServletResponse response, LoomHttpContextImpl httpContext) throws Exception {
+        response.setStatus(httpContext.getResponseStatus());
+        response.setContentType("application/json");
+
+        Object responseBody = httpContext.getResponseBody();
+        if (responseBody != null) {
+            jsonCodec.writeValue(response.getOutputStream(), responseBody);
+        }
     }
 
     @Override

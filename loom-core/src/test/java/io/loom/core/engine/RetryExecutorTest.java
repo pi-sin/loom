@@ -129,4 +129,98 @@ class RetryExecutorTest {
                 .isSameAs(wrapper)
                 .hasCause(rootCause);
     }
+
+    @Test
+    void shouldNotRetryOn4xxClientError() {
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        assertThatThrownBy(() -> retryExecutor.execute(() -> {
+            attempts.incrementAndGet();
+            throw new LoomServiceClientException("user-svc", 404, "Not Found");
+        }, new RetryConfig(3, 10, 1.0, 100), "test"))
+                .isInstanceOf(LoomServiceClientException.class)
+                .satisfies(ex -> {
+                    LoomServiceClientException sce = (LoomServiceClientException) ex;
+                    assertThat(sce.getStatusCode()).isEqualTo(404);
+                });
+
+        // Should fail immediately without retrying
+        assertThat(attempts.get()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldRetryOn5xxServerError() {
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        assertThatThrownBy(() -> retryExecutor.execute(() -> {
+            attempts.incrementAndGet();
+            throw new LoomServiceClientException("payment-svc", 503, "Service Unavailable");
+        }, new RetryConfig(3, 10, 1.0, 100), "test"))
+                .isInstanceOf(LoomServiceClientException.class)
+                .satisfies(ex -> {
+                    LoomServiceClientException sce = (LoomServiceClientException) ex;
+                    assertThat(sce.getStatusCode()).isEqualTo(503);
+                });
+
+        // Should retry all 3 attempts
+        assertThat(attempts.get()).isEqualTo(3);
+    }
+
+    @Test
+    void shouldRetryOnTransportFailure() {
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        assertThatThrownBy(() -> retryExecutor.execute(() -> {
+            attempts.incrementAndGet();
+            throw new LoomServiceClientException("user-svc", "Connection refused",
+                    new java.io.IOException("Connection refused"));
+        }, new RetryConfig(3, 10, 1.0, 100), "test"))
+                .isInstanceOf(LoomServiceClientException.class)
+                .satisfies(ex -> {
+                    LoomServiceClientException sce = (LoomServiceClientException) ex;
+                    assertThat(sce.getStatusCode()).isEqualTo(-1);
+                });
+
+        // Transport failures (statusCode=-1) should retry
+        assertThat(attempts.get()).isEqualTo(3);
+    }
+
+    @Test
+    void shouldNotRetryOn400BadRequest() {
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        assertThatThrownBy(() -> retryExecutor.execute(() -> {
+            attempts.incrementAndGet();
+            throw new LoomServiceClientException("api-svc", 400, "Bad Request");
+        }, new RetryConfig(3, 10, 1.0, 100), "test"))
+                .isInstanceOf(LoomServiceClientException.class);
+
+        assertThat(attempts.get()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldNotRetryOn401Unauthorized() {
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        assertThatThrownBy(() -> retryExecutor.execute(() -> {
+            attempts.incrementAndGet();
+            throw new LoomServiceClientException("api-svc", 401, "Unauthorized");
+        }, new RetryConfig(3, 10, 1.0, 100), "test"))
+                .isInstanceOf(LoomServiceClientException.class);
+
+        assertThat(attempts.get()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldNotRetryOn409Conflict() {
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        assertThatThrownBy(() -> retryExecutor.execute(() -> {
+            attempts.incrementAndGet();
+            throw new LoomServiceClientException("api-svc", 409, "Conflict");
+        }, new RetryConfig(3, 10, 1.0, 100), "test"))
+                .isInstanceOf(LoomServiceClientException.class);
+
+        assertThat(attempts.get()).isEqualTo(1);
+    }
 }
