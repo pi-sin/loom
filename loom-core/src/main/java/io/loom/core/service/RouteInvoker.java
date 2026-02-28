@@ -24,4 +24,19 @@ public interface RouteInvoker {
     <T> T delete(Class<T> responseType);
 
     <T> T patch(Class<T> responseType);
+
+    /** Returns full response metadata without throwing on 4xx/5xx. */
+    <T> ServiceResponse<T> getResponse(Class<T> responseType);
+
+    /** Returns full response metadata without throwing on 4xx/5xx. */
+    <T> ServiceResponse<T> postResponse(Class<T> responseType);
+
+    /** Returns full response metadata without throwing on 4xx/5xx. */
+    <T> ServiceResponse<T> putResponse(Class<T> responseType);
+
+    /** Returns full response metadata without throwing on 4xx/5xx. */
+    <T> ServiceResponse<T> deleteResponse(Class<T> responseType);
+
+    /** Returns full response metadata without throwing on 4xx/5xx. */
+    <T> ServiceResponse<T> patchResponse(Class<T> responseType);
 }

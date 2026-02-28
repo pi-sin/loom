@@ -20,7 +20,7 @@ public class LoomHttpContextImpl implements LoomHttpContext {
     private final long maxRequestBodySize;
     private final byte[] rawBody;
 
-    private final Map<String, List<String>> cachedHeaders;
+    private Map<String, List<String>> cachedHeaders;
 
     private final ConcurrentHashMap<String, Object> attributes = new ConcurrentHashMap<>();
     private Object responseBody;
@@ -28,6 +28,7 @@ public class LoomHttpContextImpl implements LoomHttpContext {
     private Map<String, String> queryParamDefaults;
     private Map<String, List<String>> cachedQueryParams;
     private Object cachedParsedBody;
+    private Map<String, String> cachedPathVars;
 
     private static final Set<String> BODY_METHODS = Set.of("POST", "PUT", "PATCH");
 
@@ -41,7 +42,6 @@ public class LoomHttpContextImpl implements LoomHttpContext {
         this.maxRequestBodySize = maxRequestBodySize;
         this.rawBody = BODY_METHODS.contains(request.getMethod().toUpperCase())
                 ? readBody(request) : new byte[0];
-        this.cachedHeaders = buildHeaders(request);
     }
 
     private static Map<String, List<String>> buildHeaders(HttpServletRequest request) {
@@ -60,7 +60,7 @@ public class LoomHttpContextImpl implements LoomHttpContext {
                 headers.put(name, List.copyOf(list));
             }
         }
-        return Collections.unmodifiableMap(headers);
+        return Map.copyOf(headers);
     }
 
     private byte[] readBody(HttpServletRequest request) {
@@ -100,6 +100,10 @@ public class LoomHttpContextImpl implements LoomHttpContext {
 
     @Override
     public Map<String, List<String>> getHeaders() {
+        if (cachedHeaders != null) {
+            return cachedHeaders;
+        }
+        cachedHeaders = buildHeaders(request);
         return cachedHeaders;
     }
 
@@ -123,11 +127,11 @@ public class LoomHttpContextImpl implements LoomHttpContext {
 
     private Map<String, List<String>> buildQueryParams() {
         Map<String, List<String>> params = new LinkedHashMap<>();
-        request.getParameterMap().forEach((k, v) -> params.put(k, Arrays.asList(v)));
+        request.getParameterMap().forEach((k, v) -> params.put(k, List.of(v)));
         if (queryParamDefaults != null) {
             queryParamDefaults.forEach((k, v) -> params.putIfAbsent(k, List.of(v)));
         }
-        return Collections.unmodifiableMap(params);
+        return Map.copyOf(params);
     }
 
     @Override
@@ -137,7 +141,11 @@ public class LoomHttpContextImpl implements LoomHttpContext {
 
     @Override
     public Map<String, String> getPathVariables() {
-        return Collections.unmodifiableMap(pathVariables);
+        if (cachedPathVars != null) {
+            return cachedPathVars;
+        }
+        cachedPathVars = pathVariables.isEmpty() ? Map.of() : Map.copyOf(pathVariables);
+        return cachedPathVars;
     }
 
     Map<String, String> getPathVariablesRaw() {

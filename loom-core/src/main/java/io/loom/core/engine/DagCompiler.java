@@ -56,11 +56,60 @@ public class DagCompiler {
         }
 
         DagValidator.ValidationResult result = validator.validate(nodes, responseType);
+        List<DagNode> topoOrder = result.topologicalOrder();
+
+        // Assign sequential indices based on topological order
+        Map<Class<? extends LoomBuilder<?>>, Integer> builderToIndex = new HashMap<>();
+        List<DagNode> indexedOrder = new ArrayList<>(topoOrder.size());
+
+        for (int i = 0; i < topoOrder.size(); i++) {
+            DagNode original = topoOrder.get(i);
+            builderToIndex.put(original.builderClass(), i);
+
+            // Compute dependency indices
+            int[] depIndices = new int[original.dependsOn().size()];
+            int di = 0;
+            for (Class<? extends LoomBuilder<?>> dep : original.dependsOn()) {
+                Integer depIdx = builderToIndex.get(dep);
+                if (depIdx == null) {
+                    throw new LoomException("Dependency '" + dep.getSimpleName()
+                            + "' not found in topological order for node '" + original.name() + "'");
+                }
+                depIndices[di++] = depIdx;
+            }
+
+            DagNode indexed = new DagNode(
+                    original.builderClass(),
+                    original.dependsOn(),
+                    original.required(),
+                    original.timeoutMs(),
+                    original.outputType(),
+                    i,
+                    depIndices
+            );
+            indexedOrder.add(indexed);
+        }
+
+        // Rebuild nodes map with indexed nodes
+        Map<Class<? extends LoomBuilder<?>>, DagNode> indexedNodes = new LinkedHashMap<>();
+        for (DagNode node : indexedOrder) {
+            indexedNodes.put(node.builderClass(), node);
+        }
+
+        // Build type→index and builder→index maps
+        Map<Class<?>, Integer> typeIndexMap = new HashMap<>();
+        Map<Class<? extends LoomBuilder<?>>, Integer> builderIndexMap = new HashMap<>();
+        for (DagNode node : indexedOrder) {
+            typeIndexMap.put(node.outputType(), node.index());
+            builderIndexMap.put(node.builderClass(), node.index());
+        }
+
+        DagNode terminal = indexedNodes.get(result.terminalNode().builderClass());
 
         log.info("[Loom] Compiled DAG with {} nodes, terminal='{}'",
-                nodes.size(), result.terminalNode().name());
+                indexedNodes.size(), terminal.name());
 
-        return new Dag(nodes, result.topologicalOrder(), result.terminalNode());
+        return new Dag(indexedNodes, indexedOrder, terminal, typeIndexMap, builderIndexMap);
     }
 
     public static Class<?> resolveOutputType(Class<? extends LoomBuilder<?>> builderClass) {

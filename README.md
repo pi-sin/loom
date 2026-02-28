@@ -39,6 +39,10 @@ Loom executes it with maximum parallelism using virtual threads.
   node
 - **Built-in retry with backoff** — Exponential backoff with jitter on virtual threads (sleep is
   free)
+- **Graceful error handling** — `ServiceResponse<T>` wrapper lets builders inspect upstream status
+  codes and error bodies without catching exceptions
+- **Transparent proxy forwarding** — Passthrough APIs forward upstream status codes, response
+  headers, and content types as-is (not hardcoded to JSON)
 - **Interceptor chains** — Request/response interceptors with attribute passing to builders
 - **Embedded DAG visualization** — Dark-themed UI at `/loom/ui` powered by D3.js + dagre-d3
 - **High-performance JSON** — dsl-json for fast, reflection-free serialization on both response
@@ -200,8 +204,10 @@ public class CreateOrderApi {}
 
 The route's `path` and `method` are defined in YAML config under `loom.services.order-service.routes.create-order`.
 **Path variables** are resolved from the incoming request. **Query parameters** are forwarded
-automatically. Client request headers are forwarded (excluding `Host` and `Content-Length`), and the
-request body is forwarded as-is for POST/PUT/PATCH.
+automatically. Client request headers are forwarded (excluding hop-by-hop headers like `Host`,
+`Content-Length`, `Connection`, `Transfer-Encoding`), and the request body is forwarded as-is for
+POST/PUT/PATCH. The upstream **status code**, **response headers**, and **content type** are
+forwarded transparently — passthrough APIs are not limited to JSON responses.
 
 Passthrough APIs automatically forward **path parameters** and **query parameters** to the downstream
 service:
@@ -322,7 +328,8 @@ dependencies resolve.
 | `LoomInterceptor` | Request/response processing. `void handle(LoomHttpContext, InterceptorChain)` + `default int order()` |
 | `ServiceAccessor` | Entry point for route-based service invocation. `route(name)` returns `RouteInvoker`                  |
 | `RouteInvoker`    | Fluent interface for invoking a route: `.pathVar()`, `.queryParam()`, `.header()`, `.body()`, `.get()`/`.post()`/etc. |
-| `ServiceClient`   | Low-level HTTP client for service calls (get/post/put/delete/patch)                                   |
+| `ServiceResponse<T>` | Response wrapper record carrying `data`, `statusCode`, `headers`, `rawBody`, `contentType` with `isSuccessful()`/`isClientError()`/`isServerError()` helpers |
+| `ServiceClient`   | Low-level HTTP client for service calls (get/post/put/delete/patch + exchange/proxy)                  |
 
 ### BuilderContext Methods
 
@@ -549,6 +556,47 @@ public class PatchOrderBuilder implements LoomBuilder<OrderResponse> {
 }
 ```
 
+### Graceful Error Handling with ServiceResponse
+
+The `*Response()` methods return a `ServiceResponse<T>` instead of throwing on 4xx/5xx, letting
+builders inspect the status code and decide how to handle errors:
+
+```java
+// Route config: product-service.routes.get-product.path = /products/{id}
+@Component
+public class FetchProductBuilder implements LoomBuilder<ProductInfo> {
+    public ProductInfo build(BuilderContext ctx) {
+        ServiceResponse<ProductInfo> resp = ctx.service("product-service")
+                .route("get-product")
+                .getResponse(ProductInfo.class);
+
+        if (resp.isSuccessful()) {
+            return resp.data();
+        } else if (resp.isClientError()) {
+            log.warn("Product not found, status={}", resp.statusCode());
+            return new ProductInfo("unknown", "N/A");
+        } else {
+            log.error("Product service error, status={}, body={}",
+                    resp.statusCode(), new String(resp.rawBody()));
+            throw new RuntimeException("Product service unavailable");
+        }
+    }
+}
+```
+
+`ServiceResponse<T>` provides:
+
+| Field/Method       | Description                                              |
+|--------------------|----------------------------------------------------------|
+| `data()`           | Deserialized body (null on error)                        |
+| `statusCode()`     | HTTP status code from upstream                           |
+| `headers()`        | Response headers from upstream                           |
+| `rawBody()`        | Raw response bytes (always available)                    |
+| `contentType()`    | Response Content-Type from upstream                      |
+| `isSuccessful()`   | `true` if status is 2xx                                  |
+| `isClientError()`  | `true` if status is 4xx                                  |
+| `isServerError()`  | `true` if status is 5xx                                  |
+
 ### Reading Headers Set by Interceptor
 
 Interceptors can authenticate and set attributes that builders read:
@@ -645,11 +693,16 @@ public class DebugBuilder implements LoomBuilder<Map<String, Object>> {
 | `.queryParam(name, value)`        | Override/add a query parameter (auto-forwarded by default) |
 | `.header(name, value)`            | Add a request header (only explicit headers forwarded)   |
 | `.body(object)`                   | Set the request body (for POST/PUT/PATCH)                |
-| `.get(responseType)`              | Execute GET                                              |
-| `.post(responseType)`             | Execute POST                                             |
-| `.put(responseType)`              | Execute PUT                                              |
-| `.delete(responseType)`           | Execute DELETE                                           |
-| `.patch(responseType)`            | Execute PATCH                                            |
+| `.get(responseType)`              | Execute GET (throws on 4xx/5xx)                          |
+| `.post(responseType)`             | Execute POST (throws on 4xx/5xx)                         |
+| `.put(responseType)`              | Execute PUT (throws on 4xx/5xx)                          |
+| `.delete(responseType)`           | Execute DELETE (throws on 4xx/5xx)                       |
+| `.patch(responseType)`            | Execute PATCH (throws on 4xx/5xx)                        |
+| `.getResponse(responseType)`      | Execute GET, return `ServiceResponse<T>` (no throw)      |
+| `.postResponse(responseType)`     | Execute POST, return `ServiceResponse<T>` (no throw)     |
+| `.putResponse(responseType)`      | Execute PUT, return `ServiceResponse<T>` (no throw)      |
+| `.deleteResponse(responseType)`   | Execute DELETE, return `ServiceResponse<T>` (no throw)   |
+| `.patchResponse(responseType)`    | Execute PATCH, return `ServiceResponse<T>` (no throw)    |
 
 All service calls are **blocking on virtual threads** — the virtual thread unmounts from the
 carrier thread during I/O wait, so blocking is as efficient as async with much simpler code. Retry
@@ -670,6 +723,34 @@ Loom uses virtual threads at every layer:
 **Anti-pinning rules:** The framework uses `ReentrantLock` instead of `synchronized` everywhere. If
 you need locking in your builders, use `ReentrantLock`.
 
+## Performance
+
+Loom includes a JMH benchmark suite (`loom-benchmark`) that measures throughput, latency, and
+allocation overhead of the core execution pipeline.
+
+Representative results on a single thread (Apple M-series, JDK 21):
+
+| Benchmark | Throughput | Avg Latency | Allocation |
+|-----------|-----------|-------------|------------|
+| RouteTrie lookup (static, 50-route trie) | ~31M ops/sec | ~32 ns/op | 168 B/op |
+| DAG execution (5-node, no I/O) | ~56K ops/sec | ~16.5 μs/op | ~4.3 KB/op |
+| End-to-end (route + context + DAG + JSON) | ~57K ops/sec | ~17.3 μs/op | ~7.6 KB/op |
+
+The end-to-end benchmark measures pure CPU overhead per request (route matching → context creation →
+DAG compilation → 5-node execution → JSON serialization) with no network I/O. In production, with
+virtual threads handling I/O concurrently across multiple cores, a 4-vCPU instance can sustain
+20–30K+ real requests per second depending on upstream service latency.
+
+### Running Benchmarks
+
+```bash
+# Build the benchmark JAR (skip tests for faster builds)
+mvn package -pl loom-benchmark -DskipTests
+
+# Run all benchmarks (1 fork, 3 warmup iterations, 5 measurement iterations, GC profiler)
+java -jar loom-benchmark/target/benchmarks.jar -f 1 -wi 3 -i 5 -prof gc
+```
+
 ## Module Structure
 
 ```
@@ -677,13 +758,19 @@ loom/
 ├── loom-core/                     # Pure Java — zero Spring deps
 ├── loom-spring-boot-starter/      # Spring Boot auto-configuration
 ├── loom-ui/                       # Embedded DAG visualization
-└── loom-example/                  # Working demo app
+├── loom-example/                  # Working demo app
+└── loom-benchmark/                # JMH performance benchmarks
 ```
 
 ## Building
 
 ```bash
+# Build all modules
 mvn clean install
+
+# Build and run benchmarks
+mvn package -pl loom-benchmark -DskipTests
+java -jar loom-benchmark/target/benchmarks.jar -f 1 -wi 3 -i 5 -prof gc
 ```
 
 ## Running the Example

@@ -31,8 +31,10 @@ public class SpringBuilderContext implements BuilderContext {
     private final ConcurrentHashMap<String, Object> attributes = new ConcurrentHashMap<>();
     private static final Object NULL_SENTINEL = new Object();
 
-    private final ConcurrentHashMap<Class<?>, Object> resultsByType = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Class<? extends LoomBuilder<?>>, Object> resultsByBuilder = new ConcurrentHashMap<>();
+    // Array-based result storage (initialized by DagExecutor before DAG execution)
+    private volatile Object[] results;
+    private Map<Class<?>, Integer> typeIndexMap;
+    private Map<Class<? extends LoomBuilder<?>>, Integer> builderIndexMap;
 
     public SpringBuilderContext(String httpMethod, String requestPath,
                                 Map<String, String> pathVariables,
@@ -54,6 +56,15 @@ public class SpringBuilderContext implements BuilderContext {
         this.unmodPathVars = this.pathVariables;
         this.unmodQueryParams = this.queryParams;
         this.unmodHeaders = this.headers;
+    }
+
+    @Override
+    public void initResultStorage(int nodeCount,
+                                  Map<Class<?>, Integer> typeIndexMap,
+                                  Map<Class<? extends LoomBuilder<?>>, Integer> builderIndexMap) {
+        this.results = new Object[nodeCount];
+        this.typeIndexMap = typeIndexMap;
+        this.builderIndexMap = builderIndexMap;
     }
 
     @Override
@@ -122,12 +133,19 @@ public class SpringBuilderContext implements BuilderContext {
     @Override
     @SuppressWarnings("unchecked")
     public <T> T getDependency(Class<T> outputType) {
-        Object result = resultsByType.get(outputType);
+        Integer index = typeIndexMap.get(outputType);
+        if (index == null) {
+            throw new LoomDependencyResolutionException(
+                    outputType.getSimpleName(),
+                    availableTypeNames(),
+                    availableBuilderNames());
+        }
+        Object result = results[index];
         if (result == null) {
             throw new LoomDependencyResolutionException(
                     outputType.getSimpleName(),
-                    resultsByType.keySet().stream().map(Class::getSimpleName).toList(),
-                    resultsByBuilder.keySet().stream().map(Class::getSimpleName).toList());
+                    availableTypeNames(),
+                    availableBuilderNames());
         }
         return result == NULL_SENTINEL ? null : (T) result;
     }
@@ -135,12 +153,19 @@ public class SpringBuilderContext implements BuilderContext {
     @Override
     @SuppressWarnings("unchecked")
     public <T> T getResultOf(Class<? extends LoomBuilder<T>> builderClass) {
-        Object result = resultsByBuilder.get(builderClass);
+        Integer index = builderIndexMap.get(builderClass);
+        if (index == null) {
+            throw new LoomDependencyResolutionException(
+                    "builder:" + builderClass.getSimpleName(),
+                    availableTypeNames(),
+                    availableBuilderNames());
+        }
+        Object result = results[index];
         if (result == null) {
             throw new LoomDependencyResolutionException(
                     "builder:" + builderClass.getSimpleName(),
-                    resultsByType.keySet().stream().map(Class::getSimpleName).toList(),
-                    resultsByBuilder.keySet().stream().map(Class::getSimpleName).toList());
+                    availableTypeNames(),
+                    availableBuilderNames());
         }
         return result == NULL_SENTINEL ? null : (T) result;
     }
@@ -148,14 +173,22 @@ public class SpringBuilderContext implements BuilderContext {
     @Override
     @SuppressWarnings("unchecked")
     public <T> Optional<T> getOptionalDependency(Class<T> outputType) {
-        Object value = resultsByType.get(outputType);
+        Integer index = typeIndexMap.get(outputType);
+        if (index == null) {
+            return Optional.empty();
+        }
+        Object value = results[index];
         return value == null ? Optional.empty() : Optional.ofNullable(value == NULL_SENTINEL ? null : (T) value);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public <T> Optional<T> getOptionalResultOf(Class<? extends LoomBuilder<T>> builderClass) {
-        Object value = resultsByBuilder.get(builderClass);
+        Integer index = builderIndexMap.get(builderClass);
+        if (index == null) {
+            return Optional.empty();
+        }
+        Object value = results[index];
         return value == null ? Optional.empty() : Optional.ofNullable(value == NULL_SENTINEL ? null : (T) value);
     }
 
@@ -180,10 +213,32 @@ public class SpringBuilderContext implements BuilderContext {
         return Collections.unmodifiableMap(attributes);
     }
 
-    // Methods for the executor to store results
+    @Override
     public void storeResult(Class<? extends LoomBuilder<?>> builderClass, Class<?> outputType, Object result) {
         Object stored = result != null ? result : NULL_SENTINEL;
-        resultsByBuilder.put(builderClass, stored);
-        resultsByType.put(outputType, stored);
+        Integer index = builderIndexMap.get(builderClass);
+        if (index != null) {
+            results[index] = stored;
+        }
+    }
+
+    private List<String> availableTypeNames() {
+        List<String> names = new ArrayList<>();
+        for (var entry : typeIndexMap.entrySet()) {
+            if (results[entry.getValue()] != null) {
+                names.add(entry.getKey().getSimpleName());
+            }
+        }
+        return names;
+    }
+
+    private List<String> availableBuilderNames() {
+        List<String> names = new ArrayList<>();
+        for (var entry : builderIndexMap.entrySet()) {
+            if (results[entry.getValue()] != null) {
+                names.add(entry.getKey().getSimpleName());
+            }
+        }
+        return names;
     }
 }

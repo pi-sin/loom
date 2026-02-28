@@ -71,4 +71,57 @@ class DagCompilerTest {
         Class<?> outputType = DagCompiler.resolveOutputType(ConcretePricingBuilder.class);
         assertThat(outputType).isEqualTo(PricingResult.class);
     }
+
+    // ── Index verification ──
+
+    static class OutputB {}
+
+    static class TestBuilderB implements LoomBuilder<OutputB> {
+        public OutputB build(BuilderContext ctx) { return new OutputB(); }
+    }
+
+    @LoomApi(method = "GET", path = "/indexed", response = OutputFinal.class)
+    @LoomGraph({
+        @Node(builder = TestBuilderA.class),
+        @Node(builder = TestBuilderB.class),
+        @Node(builder = TestTerminal.class, dependsOn = {TestBuilderA.class, TestBuilderB.class})
+    })
+    static class IndexedApiClass {}
+
+    @Test
+    void shouldAssignCorrectIndicesAndMaps() {
+        Dag dag = compiler.compile(IndexedApiClass.class);
+
+        assertThat(dag.size()).isEqualTo(3);
+
+        // All nodes have indices in [0, nodeCount)
+        for (DagNode node : dag.topologicalOrder()) {
+            assertThat(node.index()).isBetween(0, dag.size() - 1);
+        }
+
+        // Terminal's dependencyIndices point to the correct builders
+        DagNode terminal = dag.getTerminalNode();
+        assertThat(terminal.builderClass()).isEqualTo(TestTerminal.class);
+        assertThat(terminal.dependencyIndices()).hasSize(2);
+
+        int builderAIndex = dag.builderIndexMap().get(TestBuilderA.class);
+        int builderBIndex = dag.builderIndexMap().get(TestBuilderB.class);
+        assertThat(terminal.dependencyIndices()).containsExactlyInAnyOrder(builderAIndex, builderBIndex);
+
+        // typeIndexMap contains all expected entries
+        assertThat(dag.typeIndexMap()).containsKeys(OutputA.class, OutputB.class, OutputFinal.class);
+        assertThat(dag.typeIndexMap()).hasSize(3);
+
+        // builderIndexMap contains all expected entries
+        assertThat(dag.builderIndexMap()).containsKeys(TestBuilderA.class, TestBuilderB.class, TestTerminal.class);
+        assertThat(dag.builderIndexMap()).hasSize(3);
+
+        // Index consistency: typeIndexMap and builderIndexMap agree on index for each node
+        for (DagNode node : dag.topologicalOrder()) {
+            int byType = dag.typeIndexMap().get(node.outputType());
+            int byBuilder = dag.builderIndexMap().get(node.builderClass());
+            assertThat(byType).isEqualTo(node.index());
+            assertThat(byBuilder).isEqualTo(node.index());
+        }
+    }
 }

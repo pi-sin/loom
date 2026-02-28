@@ -9,7 +9,6 @@ import io.loom.core.registry.BuilderFactory;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -27,28 +26,26 @@ public class DagExecutor {
         this.builderFactory = builderFactory;
     }
 
+    @SuppressWarnings("unchecked")
     public Object execute(Dag dag, BuilderContext context) {
-        int nodeCount = dag.topologicalOrder().size();
-        ConcurrentHashMap<Class<? extends LoomBuilder<?>>, CompletableFuture<BuilderResult<?>>> futures =
-                new ConcurrentHashMap<>(nodeCount * 4 / 3 + 1, 0.75f, 1);
+        int nodeCount = dag.nodeCount();
+
+        // Initialize array-based result storage on the context
+        context.initResultStorage(nodeCount, dag.typeIndexMap(), dag.builderIndexMap());
+
+        CompletableFuture<BuilderResult<?>>[] futures = new CompletableFuture[nodeCount];
 
         for (DagNode node : dag.topologicalOrder()) {
             CompletableFuture<BuilderResult<?>> future;
+            int[] depIndices = node.dependencyIndices();
 
-            if (node.dependsOn().isEmpty()) {
+            if (depIndices.length == 0) {
                 future = CompletableFuture.supplyAsync(() -> executeNode(node, context),
                                                        virtualThreadExecutor);
             } else {
-                var depSet = node.dependsOn();
-                CompletableFuture<?>[] deps = new CompletableFuture<?>[depSet.size()];
-                int i = 0;
-                for (var dep : depSet) {
-                    CompletableFuture<BuilderResult<?>> depFuture = futures.get(dep);
-                    if (depFuture == null) {
-                        throw new LoomException("Missing dependency future for builder '"
-                                + dep.getSimpleName() + "' required by '" + node.name() + "'");
-                    }
-                    deps[i++] = depFuture;
+                CompletableFuture<?>[] deps = new CompletableFuture<?>[depIndices.length];
+                for (int i = 0; i < depIndices.length; i++) {
+                    deps[i] = futures[depIndices[i]];
                 }
 
                 future = CompletableFuture.allOf(deps)
@@ -82,11 +79,11 @@ public class DagExecutor {
                         });
             }
 
-            futures.put(node.builderClass(), future);
+            futures[node.index()] = future;
         }
 
         // Wait for terminal node
-        BuilderResult<?> terminalResult = futures.get(dag.getTerminalNode().builderClass()).join();
+        BuilderResult<?> terminalResult = futures[dag.terminalNodeIndex()].join();
 
         if (terminalResult.isFailure()) {
             throw new LoomException("Terminal builder '" + dag.getTerminalNode().name() + "' failed",
