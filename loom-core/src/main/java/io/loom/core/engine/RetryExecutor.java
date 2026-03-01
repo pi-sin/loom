@@ -1,5 +1,6 @@
 package io.loom.core.engine;
 
+import io.loom.core.exception.LoomServiceClientException;
 import io.loom.core.service.RetryConfig;
 import lombok.extern.slf4j.Slf4j;
 
@@ -16,6 +17,10 @@ public class RetryExecutor {
             try {
                 return action.get();
             } catch (Exception e) {
+                // Non-retryable exceptions (e.g. 4xx client errors) fail immediately
+                if (e instanceof LoomServiceClientException lsce && !lsce.isRetryable()) {
+                    throw lsce;
+                }
                 lastException = e;
                 if (attempt < config.maxAttempts() - 1) {
                     long delay = calculateDelay(attempt, config);

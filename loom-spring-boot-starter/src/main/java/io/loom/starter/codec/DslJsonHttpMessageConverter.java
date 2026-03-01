@@ -25,12 +25,20 @@ public class DslJsonHttpMessageConverter implements HttpMessageConverter<Object>
 
     @Override
     public boolean canRead(Class<?> clazz, MediaType mediaType) {
-        return mediaType == null || SUPPORTED.stream().anyMatch(s -> s.includes(mediaType));
+        if (mediaType == null) return true;
+        for (int i = 0; i < SUPPORTED.size(); i++) {
+            if (SUPPORTED.get(i).includes(mediaType)) return true;
+        }
+        return false;
     }
 
     @Override
     public boolean canWrite(Class<?> clazz, MediaType mediaType) {
-        return mediaType == null || SUPPORTED.stream().anyMatch(s -> s.includes(mediaType));
+        if (mediaType == null) return true;
+        for (int i = 0; i < SUPPORTED.size(); i++) {
+            if (SUPPORTED.get(i).includes(mediaType)) return true;
+        }
+        return false;
     }
 
     @Override

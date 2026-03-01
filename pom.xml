@@ -34,6 +34,7 @@
         <module>loom-spring-boot-starter</module>
         <module>loom-ui</module>
         <module>loom-example</module>
+        <module>loom-benchmark</module>
     </modules>
 
     <dependencyManagement>

@@ -20,7 +20,7 @@ public class LoomHandlerMapping extends AbstractHandlerMapping {
 
     public LoomHandlerMapping(ApiRegistry apiRegistry) {
         this.apiRegistry = apiRegistry;
-        setOrder(Ordered.HIGHEST_PRECEDENCE + 100);
+        setOrder(Ordered.HIGHEST_PRECEDENCE);
     }
 
     @Override

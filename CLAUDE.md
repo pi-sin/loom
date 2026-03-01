@@ -24,11 +24,15 @@ mvn -Dtest=DagExecutorTest test -pl loom-core
 
 # Run example application
 cd loom-example && mvn spring-boot:run
+
+# Build and run JMH benchmarks
+mvn package -pl loom-benchmark -DskipTests
+java -jar loom-benchmark/target/benchmarks.jar -f 1 -wi 3 -i 5 -prof gc
 ```
 
 ## Module Architecture
 
-Four Maven modules with a strict dependency hierarchy:
+Five Maven modules with a strict dependency hierarchy:
 
 - **loom-core** — Pure Java, zero Spring dependencies. Contains annotations (`@LoomApi`, `@LoomGraph`, `@Node`, `@LoomProxy`), core interfaces (`LoomBuilder<O>`, `BuilderContext`, `LoomInterceptor`, `ServiceClient`, `ServiceAccessor`, `RouteInvoker`), the DAG engine (`DagCompiler`, `DagValidator`, `DagExecutor`), config records (`ServiceConfig`, `RouteConfig`, `RetryConfig`), and the `JsonCodec`/`DslJsonCodec` JSON abstraction.
 
@@ -38,23 +42,29 @@ Four Maven modules with a strict dependency hierarchy:
 
 - **loom-example** — Reference application with working DAG APIs, passthrough APIs, and interceptors. Configuration in `loom-example/src/main/resources/application.yml`.
 
+- **loom-benchmark** — JMH benchmarks for performance validation. Measures DAG execution throughput, route matching, context creation, JSON codec, and end-to-end pipeline. Run with `java -jar loom-benchmark/target/benchmarks.jar -f 1 -wi 3 -i 5 -prof gc`.
+
 ## Key Architectural Concepts
 
 **Request flow:** HTTP request → `LoomHandlerMapping` (route match) → interceptor chain → either DAG execution (`@LoomGraph`) or service proxy (`@LoomProxy`) → response.
 
-**DAG execution:** `DagCompiler` converts `@LoomGraph` annotations into a `Dag` object. `DagValidator` checks for cycles and detects the terminal node (the builder whose output type matches `@LoomApi.response()`). `DagExecutor` runs nodes on virtual threads via `Executors.newVirtualThreadPerTaskExecutor()`, firing dependent nodes as soon as their dependencies resolve.
+**DAG execution:** `DagCompiler` converts `@LoomGraph` annotations into a `Dag` object with pre-indexed arrays (each `DagNode` has an `int index` and `int[] dependencyIndices` computed at compile time). `DagValidator` checks for cycles and detects the terminal node (the builder whose output type matches `@LoomApi.response()`). `DagExecutor` runs nodes on virtual threads via `Executors.newVirtualThreadPerTaskExecutor()`, using `CompletableFuture[]` arrays (not ConcurrentHashMaps) for zero per-request map overhead. Dependent nodes fire as soon as their dependencies resolve.
 
 **Two API modes on the same annotation:**
 - `@LoomApi` + `@LoomGraph` = scatter-gather DAG
 - `@LoomApi` + `@LoomProxy` = passthrough proxy to external service
 
-**Dependency resolution in builders:** By output type (`ctx.getDependency(Type.class)`) when unique, or by builder class (`ctx.getResultOf(BuilderClass.class)`) when multiple builders produce the same type.
+**Dependency resolution in builders:** By output type (`ctx.getDependency(Type.class)`) when unique, or by builder class (`ctx.getResultOf(BuilderClass.class)`) when multiple builders produce the same type. Results are stored in a pre-sized `Object[]` array with compile-time-computed index maps (`typeIndexMap`, `builderIndexMap`), eliminating per-request ConcurrentHashMap overhead.
 
 **JSON serialization:** All JSON reading/writing goes through the `JsonCodec` interface (`io.loom.core.codec`), implemented by `DslJsonCodec`. This covers both Loom's direct response writing and Spring `RestClient` service calls (via `DslJsonHttpMessageConverter`).
 
-**Route-based service invocation (Kong-style routes):** Upstream service routes are defined in YAML config under `loom.services.<name>.routes.<route-name>` with `path`, `method`, and optional timeout/retry overrides. Builders use a fluent API: `context.service("svc").route("route-name").get(Type.class)`. Path variables and query params from the incoming request are auto-forwarded; explicit `.pathVar()` / `.queryParam()` overrides take precedence. Route path templates are pre-compiled at startup via `ProxyPathTemplate`.
+**Route-based service invocation (Kong-style routes):** Upstream service routes are defined in YAML config under `loom.services.<name>.routes.<route-name>` with `path`, `method`, and optional timeout/retry overrides. Builders use a fluent API: `context.service("svc").route("route-name").get(Type.class)`. Path variables and query params from the incoming request are auto-forwarded; explicit `.pathVar()` / `.queryParam()` overrides take precedence. Route path templates are pre-compiled at startup via `ProxyPathTemplate`. For non-throwing error handling, builders can use `*Response()` methods (e.g. `.getResponse(Type.class)`) which return `ServiceResponse<T>` carrying data + status code + headers + raw body instead of throwing on 4xx/5xx.
 
-**Proxy forwarding:** `@LoomProxy(service = "svc", route = "route-name")` references a named route from config. Path variables are resolved via pre-compiled `ProxyPathTemplate` (zero per-request scanning). Query string is forwarded raw from the servlet request. Headers are forwarded (minus `Host`/`Content-Length`). Request body is forwarded as raw bytes for POST/PUT/PATCH. Route-level timeout/retry overrides create dedicated `RestServiceClient` instances only when needed; routes sharing service defaults share the same client.
+**Proxy forwarding:** `@LoomProxy(service = "svc", route = "route-name")` references a named route from config. Path variables are resolved via pre-compiled `ProxyPathTemplate` (zero per-request scanning). Query string is forwarded raw from the servlet request. Headers are forwarded (minus hop-by-hop headers like `Host`/`Content-Length`/`Connection`/`Transfer-Encoding`). Request body is forwarded as raw bytes for POST/PUT/PATCH. Route-level timeout/retry overrides create dedicated `RestServiceClient` instances only when needed; routes sharing service defaults share the same client. Passthrough mode uses `ServiceClient.proxy()` returning `ServiceResponse<byte[]>` so upstream status codes, response headers, and content types are forwarded as-is (not hardcoded to JSON).
+
+**`ServiceResponse<T>`** (`io.loom.core.service`) — Unified response wrapper record carrying `data` (typed), `statusCode`, `headers`, `rawBody`, and `contentType`. Convenience methods: `isSuccessful()`, `isClientError()`, `isServerError()`. Used in two modes:
+- **Builder mode:** `RouteInvoker.*Response()` methods (e.g. `getResponse()`, `postResponse()`) call `ServiceClient.exchange()` which returns `ServiceResponse<T>` without throwing on 4xx/5xx, letting builders inspect status and handle errors gracefully.
+- **Passthrough mode:** `LoomHandlerAdapter` calls `ServiceClient.proxy()` which returns `ServiceResponse<byte[]>` for raw byte forwarding with proper status/header/content-type propagation.
 
 **Interceptor → builder communication:** Interceptors set attributes via `ctx.setAttribute()`, builders read them via `ctx.getAttribute()`.
 
@@ -102,7 +112,8 @@ Tests exist in `loom-core` and `loom-spring-boot-starter`:
 - `loom-core/src/test/.../service/RouteConfigTest.java` — route config timeout detection
 - `loom-core/src/test/.../service/ServiceConfigTest.java` — effective timeout/retry resolution
 - `loom-spring-boot-starter/src/test/.../web/PathMatcherTest.java` — URL path matching
-- `loom-spring-boot-starter/src/test/.../service/RouteInvokerImplTest.java` — fluent route invoker with auto-forwarding
+- `loom-spring-boot-starter/src/test/.../web/LoomHandlerAdapterTest.java` — handler dispatch, passthrough response forwarding, interceptor short-circuit
+- `loom-spring-boot-starter/src/test/.../service/RouteInvokerImplTest.java` — fluent route invoker with auto-forwarding and `*Response()` exchange methods
 - `loom-spring-boot-starter/src/test/.../service/ServiceClientRegistryTest.java` — route client registration/lookup
 
 ## Code Standards

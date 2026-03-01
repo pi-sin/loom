@@ -52,21 +52,34 @@ public class RouteTrie {
         TrieNode root = methodRoots.get(method.toUpperCase());
         if (root == null) return null;
 
-        String[] segments = splitPath(path);
+        int start = 0;
+        int end = path.length();
+        if (start < end && path.charAt(start) == '/') start++;
+        if (start < end && path.charAt(end - 1) == '/') end--;
+
+        // Empty path (e.g. "/") — check if root has an API
+        if (start >= end) {
+            return root.api != null ? new RouteMatch(root.api, Map.of()) : null;
+        }
+
         Map<String, String> pathVariables = null;
         TrieNode current = root;
+        int segStart = start;
 
-        for (String segment : segments) {
-            // Literal children take priority over parameter children
-            TrieNode literal = current.literalChildren.get(segment);
-            if (literal != null) {
-                current = literal;
-            } else if (current.paramChild != null) {
-                if (pathVariables == null) pathVariables = new LinkedHashMap<>();
-                pathVariables.put(current.paramChild.paramName, segment);
-                current = current.paramChild;
-            } else {
-                return null;
+        for (int i = start; i <= end; i++) {
+            if (i == end || path.charAt(i) == '/') {
+                String segment = path.substring(segStart, i);
+                TrieNode literal = current.literalChildren.get(segment);
+                if (literal != null) {
+                    current = literal;
+                } else if (current.paramChild != null) {
+                    if (pathVariables == null) pathVariables = new LinkedHashMap<>();
+                    pathVariables.put(current.paramChild.paramName, segment);
+                    current = current.paramChild;
+                } else {
+                    return null;
+                }
+                segStart = i + 1;
             }
         }
 

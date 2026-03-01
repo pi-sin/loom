@@ -3,6 +3,7 @@ package io.loom.starter.service;
 import io.loom.core.service.RouteConfig;
 import io.loom.core.service.RouteInvoker;
 import io.loom.core.service.ServiceClient;
+import io.loom.core.service.ServiceResponse;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -97,6 +98,31 @@ public class RouteInvokerImpl implements RouteInvoker {
     @Override
     public <T> T patch(Class<T> responseType) {
         return client.patch(resolvedPath(), requestBody, responseType, headersOrEmpty());
+    }
+
+    @Override
+    public <T> ServiceResponse<T> getResponse(Class<T> responseType) {
+        return client.exchange("GET", resolvedPath(), null, responseType, headersOrEmpty());
+    }
+
+    @Override
+    public <T> ServiceResponse<T> postResponse(Class<T> responseType) {
+        return client.exchange("POST", resolvedPath(), requestBody, responseType, headersOrEmpty());
+    }
+
+    @Override
+    public <T> ServiceResponse<T> putResponse(Class<T> responseType) {
+        return client.exchange("PUT", resolvedPath(), requestBody, responseType, headersOrEmpty());
+    }
+
+    @Override
+    public <T> ServiceResponse<T> deleteResponse(Class<T> responseType) {
+        return client.exchange("DELETE", resolvedPath(), null, responseType, headersOrEmpty());
+    }
+
+    @Override
+    public <T> ServiceResponse<T> patchResponse(Class<T> responseType) {
+        return client.exchange("PATCH", resolvedPath(), requestBody, responseType, headersOrEmpty());
     }
 
     String resolvedPath() {

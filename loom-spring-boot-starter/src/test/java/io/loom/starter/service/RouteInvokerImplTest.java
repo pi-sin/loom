@@ -3,6 +3,7 @@ package io.loom.starter.service;
 import io.loom.core.model.ProxyPathTemplate;
 import io.loom.core.service.RouteConfig;
 import io.loom.core.service.ServiceClient;
+import io.loom.core.service.ServiceResponse;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -276,6 +277,146 @@ class RouteInvokerImplTest {
         invoker.pathVar("id", "7").get(String.class);
 
         verify(client).get("/products/7", String.class, Map.of());
+    }
+
+    // ── ServiceResponse exchange tests ──
+
+    @Test
+    void getResponse_shouldReturnServiceResponseOnSuccess() {
+        RouteConfig config = routeConfig("/products/{id}");
+        ServiceClient client = mock(ServiceClient.class);
+        ServiceResponse<String> expected = new ServiceResponse<>(
+                "product-data", 200,
+                Map.of("X-Request-Id", List.of("req-1")),
+                "product-data".getBytes(), "application/json");
+        when(client.exchange(eq("GET"), anyString(), any(), eq(String.class), any())).thenReturn(expected);
+
+        RouteInvokerImpl invoker = new RouteInvokerImpl(config, client, Map.of("id", "42"), Map.of());
+        ServiceResponse<String> resp = invoker.getResponse(String.class);
+
+        assertThat(resp.isSuccessful()).isTrue();
+        assertThat(resp.data()).isEqualTo("product-data");
+        assertThat(resp.statusCode()).isEqualTo(200);
+        assertThat(resp.headers()).containsKey("X-Request-Id");
+        verify(client).exchange("GET", "/products/42", null, String.class, Map.of());
+    }
+
+    @Test
+    void postResponse_shouldReturnServiceResponseOnError() {
+        RouteConfig config = routeConfig("/orders");
+        ServiceClient client = mock(ServiceClient.class);
+        byte[] errorBody = "{\"error\":\"bad request\"}".getBytes();
+        ServiceResponse<String> expected = new ServiceResponse<>(
+                null, 400, Map.of(), errorBody, "application/json");
+        when(client.exchange(eq("POST"), anyString(), any(), eq(String.class), any())).thenReturn(expected);
+
+        RouteInvokerImpl invoker = new RouteInvokerImpl(config, client, Map.of(), Map.of());
+        ServiceResponse<String> resp = invoker.body("payload").postResponse(String.class);
+
+        assertThat(resp.isSuccessful()).isFalse();
+        assertThat(resp.isClientError()).isTrue();
+        assertThat(resp.data()).isNull();
+        assertThat(resp.statusCode()).isEqualTo(400);
+        assertThat(resp.rawBody()).isEqualTo(errorBody);
+        verify(client).exchange("POST", "/orders", "payload", String.class, Map.of());
+    }
+
+    @Test
+    void getResponse_shouldPassResolvedPathAndHeaders() {
+        RouteConfig config = routeConfig("/products/{id}");
+        ServiceClient client = mock(ServiceClient.class);
+        ServiceResponse<String> expected = new ServiceResponse<>(
+                "ok", 200, Map.of(), "ok".getBytes(), "application/json");
+        when(client.exchange(eq("GET"), anyString(), any(), eq(String.class), any())).thenReturn(expected);
+
+        RouteInvokerImpl invoker = new RouteInvokerImpl(config, client,
+                Map.of("id", "10"), Map.of("sort", List.of("name")));
+        invoker.header("Authorization", "Bearer token").getResponse(String.class);
+
+        verify(client).exchange(eq("GET"),
+                argThat(path -> path.contains("/products/10") && path.contains("sort=name")),
+                isNull(), eq(String.class),
+                eq(Map.of("Authorization", "Bearer token")));
+    }
+
+    @Test
+    void putResponse_shouldReturnServiceResponse() {
+        RouteConfig config = routeConfig("/orders/{id}");
+        ServiceClient client = mock(ServiceClient.class);
+        ServiceResponse<String> expected = new ServiceResponse<>(
+                "updated", 200, Map.of(), "updated".getBytes(), "application/json");
+        when(client.exchange(eq("PUT"), anyString(), any(), eq(String.class), any())).thenReturn(expected);
+
+        RouteInvokerImpl invoker = new RouteInvokerImpl(config, client, Map.of("id", "1"), Map.of());
+        ServiceResponse<String> resp = invoker.body("payload").putResponse(String.class);
+
+        assertThat(resp.isSuccessful()).isTrue();
+        assertThat(resp.data()).isEqualTo("updated");
+        verify(client).exchange("PUT", "/orders/1", "payload", String.class, Map.of());
+    }
+
+    @Test
+    void deleteResponse_shouldReturnServiceResponseOnServerError() {
+        RouteConfig config = routeConfig("/orders/{id}");
+        ServiceClient client = mock(ServiceClient.class);
+        byte[] errorBody = "{\"error\":\"internal\"}".getBytes();
+        ServiceResponse<String> expected = new ServiceResponse<>(
+                null, 500, Map.of(), errorBody, "application/json");
+        when(client.exchange(eq("DELETE"), anyString(), any(), eq(String.class), any())).thenReturn(expected);
+
+        RouteInvokerImpl invoker = new RouteInvokerImpl(config, client, Map.of("id", "5"), Map.of());
+        ServiceResponse<String> resp = invoker.deleteResponse(String.class);
+
+        assertThat(resp.isServerError()).isTrue();
+        assertThat(resp.data()).isNull();
+        assertThat(resp.rawBody()).isEqualTo(errorBody);
+        verify(client).exchange("DELETE", "/orders/5", null, String.class, Map.of());
+    }
+
+    @Test
+    void patchResponse_shouldReturnServiceResponse() {
+        RouteConfig config = routeConfig("/orders/{id}");
+        ServiceClient client = mock(ServiceClient.class);
+        ServiceResponse<String> expected = new ServiceResponse<>(
+                "patched", 200, Map.of(), "patched".getBytes(), "application/json");
+        when(client.exchange(eq("PATCH"), anyString(), any(), eq(String.class), any())).thenReturn(expected);
+
+        RouteInvokerImpl invoker = new RouteInvokerImpl(config, client, Map.of("id", "3"), Map.of());
+        ServiceResponse<String> resp = invoker.body("partial").patchResponse(String.class);
+
+        assertThat(resp.isSuccessful()).isTrue();
+        assertThat(resp.data()).isEqualTo("patched");
+        verify(client).exchange("PATCH", "/orders/3", "partial", String.class, Map.of());
+    }
+
+    @Test
+    void getResponse_noBodyPassedToExchange() {
+        RouteConfig config = routeConfig("/products");
+        ServiceClient client = mock(ServiceClient.class);
+        ServiceResponse<String> expected = new ServiceResponse<>(
+                "ok", 200, Map.of(), "ok".getBytes(), "application/json");
+        when(client.exchange(eq("GET"), anyString(), any(), eq(String.class), any())).thenReturn(expected);
+
+        RouteInvokerImpl invoker = new RouteInvokerImpl(config, client, Map.of(), Map.of());
+        invoker.getResponse(String.class);
+
+        // GET should pass null body
+        verify(client).exchange("GET", "/products", null, String.class, Map.of());
+    }
+
+    @Test
+    void deleteResponse_noBodyPassedToExchange() {
+        RouteConfig config = routeConfig("/products/{id}");
+        ServiceClient client = mock(ServiceClient.class);
+        ServiceResponse<String> expected = new ServiceResponse<>(
+                "ok", 200, Map.of(), "ok".getBytes(), "application/json");
+        when(client.exchange(eq("DELETE"), anyString(), any(), eq(String.class), any())).thenReturn(expected);
+
+        RouteInvokerImpl invoker = new RouteInvokerImpl(config, client, Map.of("id", "1"), Map.of());
+        invoker.deleteResponse(String.class);
+
+        // DELETE should pass null body
+        verify(client).exchange("DELETE", "/products/1", null, String.class, Map.of());
     }
 
     private RouteConfig routeConfig(String path) {
