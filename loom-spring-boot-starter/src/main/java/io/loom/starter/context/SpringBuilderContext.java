@@ -10,7 +10,6 @@ import io.loom.starter.service.ServiceAccessorImpl;
 import io.loom.starter.service.ServiceClientRegistry;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class SpringBuilderContext implements BuilderContext {
 
@@ -28,7 +27,7 @@ public class SpringBuilderContext implements BuilderContext {
     private final Map<String, List<String>> unmodQueryParams;
     private final Map<String, List<String>> unmodHeaders;
 
-    private final ConcurrentHashMap<String, Object> attributes = new ConcurrentHashMap<>();
+    private final Map<String, Object> attributes = new HashMap<>();
     private static final Object NULL_SENTINEL = new Object();
 
     // Array-based result storage (initialized by DagExecutor before DAG execution)

@@ -9,7 +9,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class LoomHttpContextImpl implements LoomHttpContext {
 
@@ -22,7 +21,7 @@ public class LoomHttpContextImpl implements LoomHttpContext {
 
     private Map<String, List<String>> cachedHeaders;
 
-    private final ConcurrentHashMap<String, Object> attributes = new ConcurrentHashMap<>();
+    private final Map<String, Object> attributes = new HashMap<>();
     private Object responseBody;
     private int responseStatus = 200;
     private Map<String, String> queryParamDefaults;

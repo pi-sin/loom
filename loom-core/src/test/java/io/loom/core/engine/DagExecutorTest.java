@@ -10,7 +10,6 @@ import io.loom.core.service.ServiceAccessor;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.*;
@@ -21,7 +20,7 @@ class DagExecutorTest {
     // ── Stub BuilderContext that supports array-based storage ──
 
     static class StubBuilderContext implements BuilderContext {
-        private final Map<String, Object> attributes = new ConcurrentHashMap<>();
+        private final Map<String, Object> attributes = new HashMap<>();
         private final Map<String, String> pathVars;
 
         // Array-based result storage
