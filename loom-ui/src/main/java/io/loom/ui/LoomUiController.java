@@ -95,7 +95,10 @@ public class LoomUiController {
     private List<InterceptorDto> resolveInterceptors(ApiDefinition api) {
         List<LoomInterceptor> interceptors = interceptorRegistry.getInterceptors(api.interceptors());
         return interceptors.stream()
-                .map(i -> new InterceptorDto(i.getClass().getSimpleName(), i.order()))
+                .map(i -> new InterceptorDto(
+                        i.getClass().getSimpleName(),
+                        i.order(),
+                        interceptorRegistry.isGlobal(i)))
                 .toList();
     }
 
@@ -125,6 +128,7 @@ public class LoomUiController {
 
     public record InterceptorDto(
             String name,
-            int order
+            int order,
+            boolean global
     ) {}
 }
