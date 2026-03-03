@@ -1,14 +1,14 @@
 package io.loom.example.interceptor;
 
 import io.loom.core.interceptor.InterceptorChain;
+import io.loom.core.interceptor.LoomGlobalInterceptor;
 import io.loom.core.interceptor.LoomHttpContext;
-import io.loom.core.interceptor.LoomInterceptor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-public class RequestLoggingInterceptor implements LoomInterceptor {
+public class RequestLoggingInterceptor implements LoomGlobalInterceptor {
 
     @Override
     public int order() { return 1; }
