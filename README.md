@@ -43,7 +43,7 @@ Loom executes it with maximum parallelism using virtual threads.
   codes and error bodies without catching exceptions
 - **Transparent proxy forwarding** — Passthrough APIs forward upstream status codes, response
   headers, and content types as-is (not hardcoded to JSON)
-- **Interceptor chains** — Request/response interceptors with attribute passing to builders
+- **Interceptor chains** — Global interceptors (`LoomGlobalInterceptor`) run on every request; per-API interceptors (`LoomInterceptor`) run only when referenced in `@LoomApi(interceptors = {...})`. Both support attribute passing to builders
 - **Embedded DAG visualization** — Dark-themed UI at `/loom/ui` powered by D3.js + dagre-d3
 - **High-performance JSON** — dsl-json for fast, reflection-free serialization on both response
   writing and service calls
@@ -325,7 +325,8 @@ dependencies resolve.
 |-------------------|-------------------------------------------------------------------------------------------------------|
 | `LoomBuilder<O>`  | DAG node implementation. `O build(BuilderContext ctx)`                                                |
 | `BuilderContext`  | Shared context for all builders in a request                                                          |
-| `LoomInterceptor` | Request/response processing. `void handle(LoomHttpContext, InterceptorChain)` + `default int order()` |
+| `LoomInterceptor` | Per-API request/response processing. `void handle(LoomHttpContext, InterceptorChain)` + `default int order()`. Only runs when referenced in `@LoomApi(interceptors = {...})` |
+| `LoomGlobalInterceptor` | Extends `LoomInterceptor`. Runs on every request automatically — no need to reference in `@LoomApi` |
 | `ServiceAccessor` | Entry point for route-based service invocation. `route(name)` returns `RouteInvoker`                  |
 | `RouteInvoker`    | Fluent interface for invoking a route: `.pathVar()`, `.queryParam()`, `.header()`, `.body()`, `.get()`/`.post()`/etc. |
 | `ServiceResponse<T>` | Response wrapper record carrying `data`, `statusCode`, `headers`, `rawBody`, `contentType` with `isSuccessful()`/`isClientError()`/`isServerError()` helpers |
@@ -596,6 +597,37 @@ public class FetchProductBuilder implements LoomBuilder<ProductInfo> {
 | `isSuccessful()`   | `true` if status is 2xx                                  |
 | `isClientError()`  | `true` if status is 4xx                                  |
 | `isServerError()`  | `true` if status is 5xx                                  |
+
+### Global vs Per-API Interceptors
+
+Interceptors come in two flavours:
+
+- **`LoomGlobalInterceptor`** — runs on every request automatically.
+- **`LoomInterceptor`** — per-API; only runs when listed in `@LoomApi(interceptors = {...})`.
+
+```java
+// Global: runs on every request
+@Component
+public class CorrelationIdInterceptor implements LoomGlobalInterceptor {
+    public void handle(LoomHttpContext ctx, InterceptorChain chain) {
+        ctx.setResponseHeader("X-Correlation-ID", UUID.randomUUID().toString());
+        chain.next(ctx);
+    }
+}
+
+// Per-API: only runs when explicitly referenced
+@Component
+public class ApiKeyInterceptor implements LoomInterceptor {
+    public void handle(LoomHttpContext ctx, InterceptorChain chain) {
+        if (!"valid-key".equals(ctx.getHeader("X-API-Key"))) {
+            ctx.setResponseStatus(403);
+            ctx.setResponseBody(Map.of("error", "Forbidden"));
+            return;
+        }
+        chain.next(ctx);
+    }
+}
+```
 
 ### Reading Headers Set by Interceptor
 

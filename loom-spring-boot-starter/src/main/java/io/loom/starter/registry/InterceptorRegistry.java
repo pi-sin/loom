@@ -1,5 +1,6 @@
 package io.loom.starter.registry;
 
+import io.loom.core.interceptor.LoomGlobalInterceptor;
 import io.loom.core.interceptor.LoomInterceptor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
@@ -13,6 +14,7 @@ public class InterceptorRegistry {
 
     private final Map<Class<? extends LoomInterceptor>, LoomInterceptor> interceptorsByClass;
     private final List<LoomInterceptor> globalInterceptors;
+    private final Set<Class<?>> globalInterceptorClasses;
     private final ConcurrentHashMap<List<Class<? extends LoomInterceptor>>, List<LoomInterceptor>> cache = new ConcurrentHashMap<>();
 
     public InterceptorRegistry(ApplicationContext applicationContext) {
@@ -23,11 +25,18 @@ public class InterceptorRegistry {
             interceptorsByClass.put(interceptor.getClass(), interceptor);
         }
 
+        // Only LoomGlobalInterceptor implementations are treated as global
         this.globalInterceptors = beans.values().stream()
+                .filter(i -> i instanceof LoomGlobalInterceptor)
                 .sorted(Comparator.comparingInt(LoomInterceptor::order))
                 .collect(Collectors.toList());
 
-        log.info("[Loom] Registered {} interceptors", interceptorsByClass.size());
+        this.globalInterceptorClasses = globalInterceptors.stream()
+                .map(Object::getClass)
+                .collect(Collectors.toSet());
+
+        log.info("[Loom] Registered {} interceptors ({} global)",
+                interceptorsByClass.size(), globalInterceptors.size());
     }
 
     public List<LoomInterceptor> getGlobalInterceptors() {
@@ -62,5 +71,9 @@ public class InterceptorRegistry {
 
         combined.sort(Comparator.comparingInt(LoomInterceptor::order));
         return Collections.unmodifiableList(combined);
+    }
+
+    public boolean isGlobal(LoomInterceptor interceptor) {
+        return globalInterceptorClasses.contains(interceptor.getClass());
     }
 }

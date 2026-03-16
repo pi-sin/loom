@@ -79,7 +79,9 @@
             const node = document.createElement('span');
             node.className = 'interceptor-node node-interceptor';
             node.style.animationDelay = `${(i + 1) * 0.08}s`;
-            node.innerHTML = `${formatInterceptorName(interceptor.name)} <span class="interceptor-order">#${interceptor.order}</span>`;
+            const globalBadge = interceptor.global
+                ? '<span class="interceptor-global">G</span>' : '';
+            node.innerHTML = `${formatInterceptorName(interceptor.name)} ${globalBadge}<span class="interceptor-order">#${interceptor.order}</span>`;
             pipeline.appendChild(node);
         });
 

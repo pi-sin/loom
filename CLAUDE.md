@@ -34,7 +34,7 @@ java -jar loom-benchmark/target/benchmarks.jar -f 1 -wi 3 -i 5 -prof gc
 
 Five Maven modules with a strict dependency hierarchy:
 
-- **loom-core** — Pure Java, zero Spring dependencies. Contains annotations (`@LoomApi`, `@LoomGraph`, `@Node`, `@LoomProxy`), core interfaces (`LoomBuilder<O>`, `BuilderContext`, `LoomInterceptor`, `ServiceClient`, `ServiceAccessor`, `RouteInvoker`), the DAG engine (`DagCompiler`, `DagValidator`, `DagExecutor`), config records (`ServiceConfig`, `RouteConfig`, `RetryConfig`), and the `JsonCodec`/`DslJsonCodec` JSON abstraction.
+- **loom-core** — Pure Java, zero Spring dependencies. Contains annotations (`@LoomApi`, `@LoomGraph`, `@Node`, `@LoomProxy`), core interfaces (`LoomBuilder<O>`, `BuilderContext`, `LoomInterceptor`, `LoomGlobalInterceptor`, `ServiceClient`, `ServiceAccessor`, `RouteInvoker`), the DAG engine (`DagCompiler`, `DagValidator`, `DagExecutor`), config records (`ServiceConfig`, `RouteConfig`, `RetryConfig`), and the `JsonCodec`/`DslJsonCodec` JSON abstraction.
 
 - **loom-spring-boot-starter** — Spring Boot auto-configuration layer. Wires core engine into Spring's HTTP dispatch via custom `LoomHandlerMapping` → `LoomHandlerAdapter` → `LoomRequestHandler`. Handles classpath scanning (`LoomAnnotationScanner`), service client management (`RestServiceClient`), and interceptor chains.
 
@@ -65,6 +65,8 @@ Five Maven modules with a strict dependency hierarchy:
 **`ServiceResponse<T>`** (`io.loom.core.service`) — Unified response wrapper record carrying `data` (typed), `statusCode`, `headers`, `rawBody`, and `contentType`. Convenience methods: `isSuccessful()`, `isClientError()`, `isServerError()`. Used in two modes:
 - **Builder mode:** `RouteInvoker.*Response()` methods (e.g. `getResponse()`, `postResponse()`) call `ServiceClient.exchange()` which returns `ServiceResponse<T>` without throwing on 4xx/5xx, letting builders inspect status and handle errors gracefully.
 - **Passthrough mode:** `LoomHandlerAdapter` calls `ServiceClient.proxy()` which returns `ServiceResponse<byte[]>` for raw byte forwarding with proper status/header/content-type propagation.
+
+**Global vs per-API interceptors:** Interceptors implementing `LoomGlobalInterceptor` run on every request. Interceptors implementing only `LoomInterceptor` are per-API and only execute when explicitly referenced via `@LoomApi(interceptors = {...})`. Both types are available in the `InterceptorRegistry`; global ones are auto-included, per-API ones are merged in and deduplicated when requested.
 
 **Interceptor → builder communication:** Interceptors set attributes via `ctx.setAttribute()`, builders read them via `ctx.getAttribute()`.
 
@@ -113,6 +115,7 @@ Tests exist in `loom-core` and `loom-spring-boot-starter`:
 - `loom-core/src/test/.../service/ServiceConfigTest.java` — effective timeout/retry resolution
 - `loom-spring-boot-starter/src/test/.../web/PathMatcherTest.java` — URL path matching
 - `loom-spring-boot-starter/src/test/.../web/LoomHandlerAdapterTest.java` — handler dispatch, passthrough response forwarding, interceptor short-circuit
+- `loom-spring-boot-starter/src/test/.../registry/InterceptorRegistryTest.java` — global vs per-API interceptor filtering, deduplication, ordering, isGlobal()
 - `loom-spring-boot-starter/src/test/.../service/RouteInvokerImplTest.java` — fluent route invoker with auto-forwarding and `*Response()` exchange methods
 - `loom-spring-boot-starter/src/test/.../service/ServiceClientRegistryTest.java` — route client registration/lookup
 
